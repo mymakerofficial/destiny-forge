@@ -7,6 +7,9 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 
 // https://vite.dev/config/
 export default defineConfig({
+  optimizeDeps: {
+    exclude: ['@electric-sql/pglite'],
+  },
   css: {
     postcss: {
       plugins: [tailwind(), autoprefixer()],
