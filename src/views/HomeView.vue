@@ -9,7 +9,7 @@ import { useDBMutation } from '@/composables/useDBMutation.ts'
 const input = ref('')
 const limit = ref(5)
 
-const { data, error } = useDBQuery({
+const { data } = useDBQuery({
   query: ({ db, items }) =>
     db
       .select({
@@ -22,7 +22,11 @@ const { data, error } = useDBQuery({
       .orderBy(sql`${items.createdAt} DESC`),
 })
 
-const { mutate: addItem, error: mutationError } = useDBMutation({
+const { data: count } = useDBQuery({
+  query: ({ db, items }) => db.$count(items),
+})
+
+const { mutate: addItem } = useDBMutation({
   mutation: (name: string) => sql`INSERT INTO items (name) VALUES (${name})`,
 })
 
@@ -34,21 +38,20 @@ function handleAdd() {
 
 <template>
   <main class="p-12 flex flex-col gap-4 max-w-screen-md">
-    <div class="flex gap-2 items-center">
+    <form class="flex gap-2 items-center" @submit.prevent="handleAdd">
       <Input v-model="input" />
-      <Button @click="handleAdd">Add</Button>
+      <Button type="submit">Add</Button>
+    </form>
+    <hr />
+    <div class="flex gap-2 items-center justify-between">
+      <b>Showing {{ data.length }} items of {{ count }}</b>
+      <div class="flex gap-2 items-center">
+        <Input v-model="limit" type="number" class="w-min" />
+        <Button @click="() => (limit -= 1)">-</Button>
+        <Button @click="() => (limit += 1)">+</Button>
+      </div>
     </div>
     <hr />
-    <div class="flex gap-2 items-center">
-      <label>Limit</label>
-      <Input v-model="limit" type="number" class="w-min" />
-      <Button @click="() => (limit -= 1)">-</Button>
-      <Button @click="() => (limit += 1)">+</Button>
-    </div>
-    <b>Showing {{ data.length }} items</b>
-    <hr />
-    <p class="text-red-500">{{ error }}</p>
-    <p class="text-red-500">{{ mutationError }}</p>
     <div class="flex flex-col gap-2">
       <div v-for="item in data" :key="item.id" class="flex gap-2 items-center">
         <span>{{ item.displayName }}</span>
