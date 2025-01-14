@@ -5,7 +5,6 @@ import { useMutation } from '@tanstack/vue-query'
 import { ref } from 'vue'
 import { useDBQuery } from '@/composables/useDBQuery.ts'
 import { items } from '@/db/schema.ts'
-import { sql } from 'drizzle-orm'
 import { injectPGlite } from '@/lib/pglite.ts'
 
 const pg = injectPGlite()
@@ -15,9 +14,12 @@ const limit = ref(5)
 const { data } = useDBQuery({
   query: ({ db }) =>
     db
-      .select()
+      .select({
+        displayName: items.name,
+      })
       .from(items)
-      .limit(sql`${limit}`),
+      .limit(limit.value)
+      .orderBy(items.createdAt),
 })
 
 const { mutate: addItem } = useMutation({
@@ -47,7 +49,7 @@ function handleAdd() {
     <hr />
     <div class="flex flex-col gap-2">
       <div v-for="item in data" :key="item.id" class="flex gap-2 items-center">
-        <span>{{ item.name }}</span>
+        <span>{{ item.displayName }}</span>
         <span class="text-neutral-500">{{ item.created_at }}</span>
       </div>
     </div>
