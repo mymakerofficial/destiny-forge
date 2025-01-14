@@ -1,13 +1,11 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { useMutation } from '@tanstack/vue-query'
 import { ref } from 'vue'
 import { useDBQuery } from '@/composables/useDBQuery.ts'
-import { injectPGlite } from '@/lib/pglite.ts'
 import { sql } from 'drizzle-orm'
+import { useDBMutation } from '@/composables/useDBMutation.ts'
 
-const pg = injectPGlite()
 const input = ref('')
 const limit = ref(5)
 
@@ -24,8 +22,8 @@ const { data, error } = useDBQuery({
       .orderBy(sql`${items.createdAt} DESC`),
 })
 
-const { mutate: addItem } = useMutation({
-  mutationFn: (name: string) => pg.sql`INSERT INTO items (name) VALUES (${name})`,
+const { mutate: addItem } = useDBMutation({
+  mutation: (name: string, { db, items }) => db.insert(items).values({ name }),
 })
 
 function handleAdd() {
