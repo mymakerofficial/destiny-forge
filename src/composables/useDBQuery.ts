@@ -23,7 +23,7 @@ export function useDBQuery<T extends PgSelect>(
   const select = options.query({ db })
   const query = select.toSQL()
 
-  const queryKey = ['dbQuery', query]
+  const queryKey = ['dbQuery', query.sql, ...query.params]
 
   return useQuery({
     queryKey,
