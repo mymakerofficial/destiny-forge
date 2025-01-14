@@ -1,24 +1,27 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { injectPGlite, useLiveQuery } from '@electric-sql/pglite-vue'
+import { injectPGlite } from '@electric-sql/pglite-vue'
 import { useMutation } from '@tanstack/vue-query'
 import { ref } from 'vue'
+import { useDBQuery } from '@/composables/useDBQuery.ts'
+import { items } from '@/db/schema.ts'
+import { sql } from 'drizzle-orm'
 
-const db = injectPGlite()
+const pg = injectPGlite()
 const input = ref('')
 const limit = ref(5)
 
-const { rows: items } = useLiveQuery.sql`
-    SELECT *
-    FROM items
-    ORDER BY created_at DESC
-    LIMIT ${limit}
-`
+const { data } = useDBQuery({
+  query: ({ db }) =>
+    db
+      .select()
+      .from(items)
+      .limit(sql`${limit} - 1`),
+})
 
 const { mutate: addItem } = useMutation({
-  mutationFn: (name: string) =>
-    db.sql`INSERT INTO items (name) VALUES (${name})`,
+  mutationFn: (name: string) => pg.sql`INSERT INTO items (name) VALUES (${name})`,
 })
 
 function handleAdd() {
@@ -37,13 +40,13 @@ function handleAdd() {
     <div class="flex gap-2 items-center">
       <label>Limit</label>
       <Input v-model="limit" type="number" class="w-min" />
-      <Button @click="() => limit -= 1">-</Button>
-      <Button @click="() => limit += 1">+</Button>
+      <Button @click="() => (limit -= 1)">-</Button>
+      <Button @click="() => (limit += 1)">+</Button>
     </div>
-    <b>Showing {{ items.length }} items</b>
+    <b>Showing {{ data.length }} items</b>
     <hr />
     <div class="flex flex-col gap-2">
-      <div v-for="item in items" :key="item.id" class="flex gap-2 items-center">
+      <div v-for="item in data" :key="item.id" class="flex gap-2 items-center">
         <span>{{ item.name }}</span>
         <span class="text-neutral-500">{{ item.created_at }}</span>
       </div>
