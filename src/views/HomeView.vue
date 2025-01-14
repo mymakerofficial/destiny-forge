@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { injectPGlite } from '@electric-sql/pglite-vue'
 import { useMutation } from '@tanstack/vue-query'
 import { ref } from 'vue'
 import { useDBQuery } from '@/composables/useDBQuery.ts'
 import { items } from '@/db/schema.ts'
 import { sql } from 'drizzle-orm'
+import { injectPGlite } from '@/lib/pglite.ts'
 
 const pg = injectPGlite()
 const input = ref('')
@@ -17,7 +17,7 @@ const { data } = useDBQuery({
     db
       .select()
       .from(items)
-      .limit(sql`${limit} - 1`),
+      .limit(sql`${limit}`),
 })
 
 const { mutate: addItem } = useMutation({
