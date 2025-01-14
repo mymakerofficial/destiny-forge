@@ -4,22 +4,24 @@ import { Input } from '@/components/ui/input'
 import { useMutation } from '@tanstack/vue-query'
 import { ref } from 'vue'
 import { useDBQuery } from '@/composables/useDBQuery.ts'
-import { items } from '@/db/schema.ts'
 import { injectPGlite } from '@/lib/pglite.ts'
+import { sql } from 'drizzle-orm'
 
 const pg = injectPGlite()
 const input = ref('')
 const limit = ref(5)
 
-const { data } = useDBQuery({
-  query: ({ db }) =>
+const { data, error } = useDBQuery({
+  query: ({ db, items }) =>
     db
       .select({
+        id: items.id,
         displayName: items.name,
+        date: items.createdAt,
       })
       .from(items)
       .limit(limit.value)
-      .orderBy(items.createdAt),
+      .orderBy(sql`${items.createdAt} DESC`),
 })
 
 const { mutate: addItem } = useMutation({
@@ -47,10 +49,11 @@ function handleAdd() {
     </div>
     <b>Showing {{ data.length }} items</b>
     <hr />
+    <p class="text-red-500">{{ error }}</p>
     <div class="flex flex-col gap-2">
       <div v-for="item in data" :key="item.id" class="flex gap-2 items-center">
         <span>{{ item.displayName }}</span>
-        <span class="text-neutral-500">{{ item.created_at }}</span>
+        <span class="text-neutral-500">{{ item.date }}</span>
       </div>
     </div>
   </main>

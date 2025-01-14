@@ -1,21 +1,24 @@
-import type { Drizzle } from '@/lib/drizzle.ts'
-import { injectDrizzle } from '@/lib/drizzle.ts'
+import { type Drizzle, injectDrizzle } from '@/lib/drizzle.ts'
 import {
   type DefaultError,
   useQuery,
   useQueryClient,
   type UseQueryReturnType,
 } from '@tanstack/vue-query'
-import { toValue } from 'vue'
+import { computed, shallowRef, toValue, watchEffect } from 'vue'
 import { injectPGlite } from '@/lib/pglite.ts'
 import { type PgSelectBase } from 'drizzle-orm/pg-core/query-builders/select'
-import type { ColumnsSelection } from 'drizzle-orm/sql/sql'
+import type { ColumnsSelection, Query } from 'drizzle-orm/sql/sql'
 import type {
   JoinNullability,
   SelectMode,
   SelectResult,
 } from 'drizzle-orm/query-builders/select.types'
+import * as schema from '@/db/schema.ts'
+import type { PgSelect } from 'drizzle-orm/pg-core'
 
+// stupidly complex type that allows us to accept drizzle queries at any stage of construction
+//  without the user needing to use $dynamic
 export type RelaxedPgSelect<
   TTableName extends string | undefined = string | undefined,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -31,7 +34,7 @@ export type RelaxedPgSelect<
 
 export type DBQueryFunctionContext = {
   db: Drizzle
-}
+} & typeof schema
 
 export type DBQueryOptions<TSelect extends RelaxedPgSelect> = {
   query: (context: DBQueryFunctionContext) => TSelect
@@ -40,41 +43,55 @@ export type DBQueryOptions<TSelect extends RelaxedPgSelect> = {
 export function useDBQuery<TSelect extends RelaxedPgSelect>(
   options: DBQueryOptions<TSelect>,
 ): UseQueryReturnType<Awaited<TSelect>, DefaultError> {
+  // TODO: allow magic sql queries and drizzle query api
+
   const db = injectDrizzle()
   const pg = injectPGlite()
   const client = useQueryClient()
 
-  const select = options.query({ db })
-  const query = select.$dynamic().toSQL()
+  const selectRef = shallowRef<PgSelect>()
+  const queryRef = shallowRef<Query>({
+    sql: '',
+    params: [],
+  })
 
-  const queryKey = ['dbQuery', query.sql, ...query.params]
+  const queryKey = computed(() => ['dbQuery', queryRef.value.sql, ...queryRef.value.params])
+
+  watchEffect(async (onCleanup) => {
+    const select = options.query({ db, ...schema }).$dynamic()
+    const query = select.toSQL()
+
+    selectRef.value = select
+    queryRef.value = query
+
+    // this essentially causes the query to run twice
+    //  we would like to use the value from the live query
+    //  but drizzle does some fancy mapping that we need and can't replicate,
+    //  so we only use the value from the drizzle query
+    const live = await pg.live.query(
+      query.sql,
+      query.params.map((it) => toValue(it)),
+    )
+
+    live.subscribe(async () => {
+      await client.invalidateQueries({
+        queryKey,
+      })
+    })
+
+    onCleanup(async () => {
+      await live.unsubscribe()
+    })
+  })
 
   return useQuery({
     queryKey,
-    queryFn: async (ctx): Promise<Awaited<TSelect>> => {
-      const res = await pg.live.query(
-        query.sql,
-        query.params.map((it) => toValue(it)),
-      )
-
-      // TODO: handle unsubscribe after key changes
-
-      // console.log('got query results', queryKey, res.initialResults.rows)
-
-      const callback = (results) => {
-        // console.log('setting query data', queryKey, results)
-        client.setQueryData(queryKey, results.rows)
-      }
-
-      res.subscribe(callback)
-
-      ctx.signal.onabort = () => {
-        // console.log('unsubscribing from query', queryKey)
-        res.unsubscribe(callback)
-      }
-
-      return res.initialResults.rows as Awaited<TSelect>
+    queryFn: async () => {
+      return (await selectRef.value!.execute()) as Awaited<TSelect>
     },
+    enabled: selectRef.value !== undefined,
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-expect-error
     initialData: [],
   })
 }
