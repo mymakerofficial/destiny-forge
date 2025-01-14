@@ -22,6 +22,10 @@ const { data } = useDBQuery({
       .orderBy(sql`${items.createdAt} DESC`),
 })
 
+const { data: helloWorld } = useDBQuery({
+  query: () => sql<{ message: string }>`SELECT 'Hello World' AS message`,
+})
+
 const { data: count } = useDBQuery({
   query: ({ db, items }) => db.$count(items),
 })
@@ -58,5 +62,6 @@ function handleAdd() {
         <span class="text-neutral-500">{{ item.date }}</span>
       </div>
     </div>
+    <p>{{ helloWorld }}</p>
   </main>
 </template>

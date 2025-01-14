@@ -17,7 +17,7 @@ import type {
 import * as schema from '@/db/schema.ts'
 import { PgDialect, type PgSelect } from 'drizzle-orm/pg-core'
 import { PgCountBuilder } from 'drizzle-orm/pg-core/query-builders/count'
-import { is } from 'drizzle-orm'
+import { is, SQL } from 'drizzle-orm'
 
 // stupidly complex type that allows us to accept drizzle queries at any stage of construction
 //  without the user needing to use $dynamic
@@ -35,22 +35,22 @@ export type RelaxedPgSelect<
 >
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type DBQueryType = RelaxedPgSelect | PgCountBuilder<any>
+export type DBQueryType = RelaxedPgSelect | PgCountBuilder<any> | SQLWrapper
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type DBQueryDynamicType = PgSelect | PgCountBuilder<any>
+export type DBQueryDynamicType = PgSelect | PgCountBuilder<any> | SQL
 
 export type DBQueryFunctionContext = {
   db: Drizzle
 } & typeof schema
 
-export type DBQueryOptions<T extends DBQueryType> = {
-  query: (context: DBQueryFunctionContext) => T
+export type DBQueryOptions<TQuery extends DBQueryType> = {
+  query: (context: DBQueryFunctionContext) => TQuery
 }
 
-export function useDBQuery<T extends DBQueryType = DBQueryType>(
-  options: DBQueryOptions<T>,
-): UseQueryReturnType<Awaited<T>, DefaultError> {
+export function useDBQuery<TQuery extends DBQueryType = DBQueryType>(
+  options: DBQueryOptions<TQuery>,
+): UseQueryReturnType<Awaited<TQuery>, DefaultError> {
   // TODO: allow magic sql queries and drizzle query api
 
   const db = injectDrizzle()
@@ -78,6 +78,9 @@ export function useDBQuery<T extends DBQueryType = DBQueryType>(
     } else if (isPgCount(res)) {
       query = res
       sql = dialect.sqlToQuery(query.getSQL())
+    } else if (isSQL(res)) {
+      query = res
+      sql = dialect.sqlToQuery(res)
     } else {
       throw new Error('Invalid query')
     }
@@ -108,8 +111,15 @@ export function useDBQuery<T extends DBQueryType = DBQueryType>(
   return useQuery({
     queryKey,
     queryFn: async () => {
+      const query = queryRef.value!
+
+      if (isSQL(query)) {
+        // execute returns the raw result
+        return (await db.execute(query)).rows as Awaited<TQuery>
+      }
+
       // awaiting the query causes it to run
-      return (await queryRef.value!) as Awaited<T>
+      return (await query) as Awaited<TQuery>
     },
     enabled: queryRef.value !== undefined,
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -125,4 +135,8 @@ function isPgSelect(query: DBQueryType): query is PgSelect {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function isPgCount(query: DBQueryType): query is PgCountBuilder<any> {
   return is(query, PgCountBuilder)
+}
+
+function isSQL(query: DBQueryType): query is SQL {
+  return is(query, SQL) && !isPgCount(query)
 }
