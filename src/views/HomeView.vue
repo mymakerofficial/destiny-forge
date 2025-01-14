@@ -22,8 +22,8 @@ const { data, error } = useDBQuery({
       .orderBy(sql`${items.createdAt} DESC`),
 })
 
-const { mutate: addItem } = useDBMutation({
-  mutation: (name: string, { db, items }) => db.insert(items).values({ name }),
+const { mutate: addItem, error: mutationError } = useDBMutation({
+  mutation: (name: string) => sql`INSERT INTO items (name) VALUES (${name})`,
 })
 
 function handleAdd() {
@@ -48,6 +48,7 @@ function handleAdd() {
     <b>Showing {{ data.length }} items</b>
     <hr />
     <p class="text-red-500">{{ error }}</p>
+    <p class="text-red-500">{{ mutationError }}</p>
     <div class="flex flex-col gap-2">
       <div v-for="item in data" :key="item.id" class="flex gap-2 items-center">
         <span>{{ item.displayName }}</span>

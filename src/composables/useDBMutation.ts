@@ -4,6 +4,7 @@ import { type DefaultError, useMutation, type UseMutationOptions } from '@tansta
 import { type AnyPgUpdate } from 'drizzle-orm/pg-core'
 import type { AnyPgInsert } from 'drizzle-orm/pg-core/query-builders/insert'
 import type { AnyPgDeleteBase } from 'drizzle-orm/pg-core/query-builders/delete'
+import { SQL } from 'drizzle-orm'
 
 export type DBMutationFunctionContext = {
   db: Drizzle
@@ -18,7 +19,7 @@ export type DBMutationOptions<
   mutation: (
     variables: TVariables,
     context: DBMutationFunctionContext,
-  ) => AnyPgInsert | AnyPgUpdate | AnyPgDeleteBase
+  ) => AnyPgInsert | AnyPgUpdate | AnyPgDeleteBase | SQL
 }
 
 export function useDBMutation<
