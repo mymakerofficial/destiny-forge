@@ -7,6 +7,8 @@ import { drizzle } from 'drizzle-orm/pglite'
 import migrate from '@/db/migrate.sql?raw'
 import * as schema from '@/db/schema'
 import { provideDrizzle } from '@/lib/drizzle.ts'
+import ErrorBoundary from '@/components/error/ErrorBoundary.vue'
+import ErrorAlert from '@/components/error/ErrorAlert.vue'
 
 const client = new PGlite({
   extensions: {
@@ -34,5 +36,8 @@ provideDrizzle(db)
 </script>
 
 <template>
-  <RouterView />
+  <ErrorBoundary>
+    <ErrorAlert />
+    <RouterView />
+  </ErrorBoundary>
 </template>

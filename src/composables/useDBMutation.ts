@@ -5,6 +5,7 @@ import { type AnyPgUpdate } from 'drizzle-orm/pg-core'
 import type { AnyPgInsert } from 'drizzle-orm/pg-core/query-builders/insert'
 import type { AnyPgDeleteBase } from 'drizzle-orm/pg-core/query-builders/delete'
 import { SQL } from 'drizzle-orm'
+import { useError } from '@/composables/useError.ts'
 
 export type DBMutationFunctionContext = {
   db: Drizzle
@@ -31,6 +32,7 @@ export function useDBMutation<
   TContext = unknown,
 >(options: DBMutationOptions<TData, TError, TVariables, TContext>) {
   const db = injectDrizzle()
+  const { setError } = useError()
 
   const { mutation, ...rest } = options
 
@@ -45,7 +47,7 @@ export function useDBMutation<
 
       return db.execute(res)
     },
-    onError: console.error
+    onError: setError
   })
 }
 
