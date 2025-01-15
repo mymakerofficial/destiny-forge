@@ -54,6 +54,7 @@ export function createErrorBoundary() {
   const context = useProvideAlertContext()
 
   onErrorCaptured((error) => {
+    console.error(error)
     const id = uuidv4()
     context.addAlert(id, {
       variant: 'destructive',

@@ -1,10 +1,17 @@
 import type { Extension, PGliteInterface } from '@electric-sql/pglite'
 
 // vite turns this into an object containing all the files in the directory
-const migrationFiles = import.meta.glob('@/db/migrations/*.sql', {
+const importRaw = import.meta.glob('@/db/migrations/*.sql', {
   query: '?raw',
   import: 'default',
 })
+
+const migrationFiles = Object.fromEntries(
+  Object.entries(importRaw).map(([path, loader]) => [
+    path.split('/').pop().replace('.sql', ''),
+    loader,
+  ]),
+)
 
 export async function migrate(pg: PGliteInterface) {
   await pg.exec(`
@@ -18,26 +25,37 @@ export async function migrate(pg: PGliteInterface) {
 
   const { rows: completedMigrations } = await pg.query<{
     tag: string
-    executed_at: Date
   }>(`
-    SELECT tag, executed_at
+    SELECT tag
     FROM drizzle.migrations
   `)
 
-  console.log('[migrator] loaded completed migrations', completedMigrations)
+  if (completedMigrations.some((completed) => !migrationFiles[completed.tag])) {
+    console.error(
+      '[migrator] migrations present in database do not match available migration files. Dropping all tables and starting from scratch.',
+    )
 
-  for (const path in migrationFiles) {
-    const tag = path.split('/').pop().replace('.sql', '')
+    // bye bye data
+    await pg.exec(`
+      DROP SCHEMA IF EXISTS drizzle CASCADE;
+      DROP SCHEMA public CASCADE;
+      CREATE SCHEMA public;
+    `)
 
+    await migrate(pg)
+    return
+  }
+
+  for (const tag in migrationFiles) {
     if (completedMigrations.some((it) => it.tag === tag)) {
-      console.log(`[migrator] skipping migration ${tag}`)
+      console.log(`[migrator] skipping migration '${tag}'`)
       continue
     }
 
-    console.log(`[migrator] running migration ${tag}`)
+    console.log(`[migrator] running migration '${tag}'`)
 
     // load the file content
-    const content = await migrationFiles[path]()
+    const content = await migrationFiles[tag]()
 
     await pg.exec(content)
     await pg.query(`INSERT INTO drizzle.migrations (tag) VALUES ($1)`, [tag])
