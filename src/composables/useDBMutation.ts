@@ -10,6 +10,8 @@ export type DBMutationFunctionContext = {
   db: Drizzle
 } & typeof schema
 
+type MaybePromise<T> = T | Promise<T>
+
 export type DBMutationOptions<
   TData = unknown,
   TError = DefaultError,
@@ -19,7 +21,7 @@ export type DBMutationOptions<
   mutation: (
     variables: TVariables,
     context: DBMutationFunctionContext,
-  ) => AnyPgInsert | AnyPgUpdate | AnyPgDeleteBase | SQL
+  ) => MaybePromise<AnyPgInsert | AnyPgUpdate | AnyPgDeleteBase | SQL | string>
 }
 
 export function useDBMutation<
@@ -34,9 +36,19 @@ export function useDBMutation<
 
   return useMutation({
     ...rest,
-    mutationFn: async (variables: TVariables) => {
-      const query = mutation(variables, { db, ...schema })
-      return db.execute(query)
+    mutationFn: (variables: TVariables) => {
+      const res = mutation(variables, { db, ...schema })
+
+      if (isPromise(res)) {
+        return res
+      }
+
+      return db.execute(res)
     },
+    onError: console.error
   })
+}
+
+function isPromise<T>(value: T | Promise<T>): value is Promise<T> {
+  return value instanceof Promise
 }

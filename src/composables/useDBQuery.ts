@@ -121,10 +121,11 @@ export function useDBQuery<TQuery extends DBQueryType = DBQueryType>(
       // awaiting the query causes it to run
       return (await query) as Awaited<TQuery>
     },
-    enabled: queryRef.value !== undefined,
+    // should always be true by this point but just to be safe
+    enabled: () => queryRef.value !== undefined,
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-expect-error
-    initialData: [],
+    initialData: () => isPgCount(queryRef.value!) ? 0 : [],
   })
 }
 
