@@ -8,27 +8,13 @@ import * as schema from '@/db/schema'
 import { provideDrizzle } from '@/lib/drizzle.ts'
 import ErrorBoundary from '@/components/error/ErrorBoundary.vue'
 import ScopedAlert from '@/components/error/ScopedAlert.vue'
+import { migrator } from '@/lib/migrator.ts'
 
 const client = new PGlite({
+  dataDir: 'idb://destiny',
   extensions: {
     live,
-    migrator: {
-      name: 'migrator',
-      setup: (pg) => {
-        return {
-          init: async () => {
-            const migrations = import.meta.glob('./db/migrations/*.sql', {
-              query: '?raw',
-              import: 'default',
-            })
-            for (const path in migrations) {
-              const content = await migrations[path]()
-              await pg.exec(content)
-            }
-          },
-        }
-      },
-    },
+    migrator,
   },
 })
 
