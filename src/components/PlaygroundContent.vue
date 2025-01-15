@@ -5,7 +5,7 @@ import { ref } from 'vue'
 import { useDBQuery } from '@/composables/useDBQuery.ts'
 import { desc, eq, sql } from 'drizzle-orm'
 import { useDBMutation } from '@/composables/useDBMutation.ts'
-import ErrorAlert from '@/components/error/ErrorAlert.vue'
+import ScopedAlert from '@/components/error/ScopedAlert.vue'
 
 const input = ref('')
 const limit = ref(5)
@@ -56,7 +56,7 @@ function handleAdd() {
 
 <template>
   <main class="p-12 flex flex-col gap-4 max-w-screen-md">
-    <ErrorAlert />
+    <ScopedAlert />
     <form class="flex gap-2 items-center" @submit.prevent="handleAdd">
       <Input v-model="input" />
       <Button type="submit">Add</Button>

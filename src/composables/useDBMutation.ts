@@ -1,11 +1,11 @@
 import { type Drizzle, injectDrizzle } from '@/lib/drizzle.ts'
 import * as schema from '@/db/schema.ts'
-import { type DefaultError, useMutation, type UseMutationOptions } from '@tanstack/vue-query'
+import { type DefaultError, type UseMutationOptions } from '@tanstack/vue-query'
 import { type AnyPgUpdate } from 'drizzle-orm/pg-core'
 import type { AnyPgInsert } from 'drizzle-orm/pg-core/query-builders/insert'
 import type { AnyPgDeleteBase } from 'drizzle-orm/pg-core/query-builders/delete'
 import { SQL } from 'drizzle-orm'
-import { useError } from '@/composables/useError.ts'
+import { useHandledMutation } from '@/composables/useHandledMutation.ts'
 
 export type DBMutationFunctionContext = {
   db: Drizzle
@@ -32,11 +32,10 @@ export function useDBMutation<
   TContext = unknown,
 >(options: DBMutationOptions<TData, TError, TVariables, TContext>) {
   const db = injectDrizzle()
-  const { setError } = useError()
 
   const { mutation, ...rest } = options
 
-  return useMutation({
+  return useHandledMutation({
     ...rest,
     mutationFn: (variables: TVariables) => {
       const res = mutation(variables, { db, ...schema })
@@ -47,7 +46,6 @@ export function useDBMutation<
 
       return db.execute(res)
     },
-    onError: setError
   })
 }
 

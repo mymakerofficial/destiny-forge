@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { createErrorBoundary } from '@/composables/useError.ts'
+import { createErrorBoundary } from '@/lib/alert.ts'
 
 createErrorBoundary()
 </script>

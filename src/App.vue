@@ -8,7 +8,7 @@ import migrate from '@/db/migrate.sql?raw'
 import * as schema from '@/db/schema'
 import { provideDrizzle } from '@/lib/drizzle.ts'
 import ErrorBoundary from '@/components/error/ErrorBoundary.vue'
-import ErrorAlert from '@/components/error/ErrorAlert.vue'
+import ScopedAlert from '@/components/error/ScopedAlert.vue'
 
 const client = new PGlite({
   extensions: {
@@ -37,7 +37,7 @@ provideDrizzle(db)
 
 <template>
   <ErrorBoundary>
-    <ErrorAlert />
+    <ScopedAlert />
     <RouterView />
   </ErrorBoundary>
 </template>
