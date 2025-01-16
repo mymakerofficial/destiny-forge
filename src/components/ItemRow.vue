@@ -33,6 +33,7 @@ const { mutate: deleteItem } = useDBMutation({
 })
 
 function handleUpdate() {
+  if (name.value === item.name) return
   updateItem(name.value)
 }
 </script>

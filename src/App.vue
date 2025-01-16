@@ -14,6 +14,7 @@ import { onMounted, ref } from 'vue'
 import { LoaderCircle } from 'lucide-vue-next'
 import type { PGlite } from '@electric-sql/pglite'
 
+const message = ref('Initiating database...')
 const completed = ref(false)
 
 const client = new PGliteWorker(
@@ -44,7 +45,11 @@ providePGlite(client as unknown as PGliteWithLive)
 provideDrizzle(db)
 
 onMounted(async () => {
-  await migrate(client)
+  await client.waitReady
+
+  await migrate(client, (_, msg) => {
+    message.value = msg
+  })
 
   completed.value = true
 })
@@ -55,7 +60,7 @@ onMounted(async () => {
   <main v-if="!completed" class="h-screen flex items-center justify-center">
     <div class="flex flex-row gap-2 items-center text-muted-foreground">
       <LoaderCircle class="animate-spin size-6" />
-      <p class="text-lg">Initiating database...</p>
+      <p class="text-lg">{{ message }}</p>
     </div>
   </main>
   <ErrorBoundary v-else>

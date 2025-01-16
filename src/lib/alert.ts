@@ -66,8 +66,14 @@ export function createErrorBoundary() {
     const id = uuidv4()
     context.addAlert(id, {
       variant: 'destructive',
-      title: 'Error',
+      title: 'Unexpected Error',
       message: error.message,
+      actions: [
+        {
+          label: 'Reload',
+          onClick: () => window.location.reload(),
+        },
+      ],
     })
     return false
   })
