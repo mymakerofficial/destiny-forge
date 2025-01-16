@@ -51,7 +51,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <Toaster :visible-toasts="10" />
+  <Toaster :visible-toasts="10" theme="dark" />
   <main v-if="!completed" class="h-screen flex items-center justify-center">
     <div class="flex flex-row gap-2 items-center text-muted-foreground">
       <LoaderCircle class="animate-spin size-6" />
