@@ -4,8 +4,9 @@ import {
   useQuery,
   useQueryClient,
   type UseQueryReturnType,
+  keepPreviousData,
 } from '@tanstack/vue-query'
-import { computed, shallowRef, toValue, watchEffect } from 'vue'
+import { computed, onScopeDispose, shallowRef, toValue, watchEffect } from 'vue'
 import { injectPGlite } from '@/lib/pglite.ts'
 import { type PgSelectBase } from 'drizzle-orm/pg-core/query-builders/select'
 import type { ColumnsSelection, Query, SQLWrapper } from 'drizzle-orm/sql/sql'
@@ -18,6 +19,7 @@ import * as schema from '@/db/schema.ts'
 import { PgDialect, type PgSelect } from 'drizzle-orm/pg-core'
 import { PgCountBuilder } from 'drizzle-orm/pg-core/query-builders/count'
 import { is, SQL } from 'drizzle-orm'
+import { createGlobalState } from '@vueuse/core'
 
 // stupidly complex type that allows us to accept drizzle queries at any stage of construction
 //  without the user needing to use $dynamic
@@ -48,14 +50,70 @@ export type DBQueryOptions<TQuery extends DBQueryType> = {
   query: (context: DBQueryFunctionContext) => TQuery
 }
 
+const useLiveState = createGlobalState(() => {
+  const pg = injectPGlite()
+  const client = useQueryClient()
+
+  const queryMap = new Map<string, {
+    count: number,
+    unsubscribe: () => Promise<void>,
+  }>
+
+  function unsubscribe(sql: string) {
+    const existing = queryMap.get(sql)
+
+    if (!existing) {
+      return
+    }
+
+    existing.count--
+
+    if (existing.count === 0) {
+      existing.unsubscribe()
+      queryMap.delete(sql)
+    }
+  }
+
+  function subscribe({ sql, params }: Query) {
+    const existing = queryMap.get(sql)
+
+    if (existing) {
+      existing.count++
+      return
+    }
+
+    queryMap.set(sql, {
+      count: 1,
+      unsubscribe: () => {}
+    })
+
+    pg.live.query(
+      sql,
+      params,
+    ).then((live) => {
+      queryMap.get(sql)!.unsubscribe = live.unsubscribe
+
+      live.subscribe(async () => {
+        await client.invalidateQueries({
+          queryKey: ['dbQuery', sql],
+        })
+      })
+    })
+
+    return () => unsubscribe(sql)
+  }
+
+  return {
+    subscribe,
+    unsubscribe,
+  }
+})
+
 export function useDBQuery<TQuery extends DBQueryType = DBQueryType>(
   options: DBQueryOptions<TQuery>,
 ): UseQueryReturnType<Awaited<TQuery>, DefaultError> {
-  // TODO: allow magic sql queries and drizzle query api
-
   const db = injectDrizzle()
-  const pg = injectPGlite()
-  const client = useQueryClient()
+  const live = useLiveState()
   const dialect = new PgDialect()
 
   const queryRef = shallowRef<DBQueryDynamicType>()
@@ -66,7 +124,7 @@ export function useDBQuery<TQuery extends DBQueryType = DBQueryType>(
 
   const queryKey = computed(() => ['dbQuery', sqlRef.value.sql, ...sqlRef.value.params])
 
-  watchEffect(async (onCleanup) => {
+  watchEffect((onCleanup) => {
     const res = options.query({ db, ...schema })
 
     let query: DBQueryDynamicType
@@ -85,27 +143,12 @@ export function useDBQuery<TQuery extends DBQueryType = DBQueryType>(
       throw new Error('Invalid query')
     }
 
+    const unsubscribe = live.subscribe(sql)
+
     queryRef.value = query
     sqlRef.value = sql
 
-    // this essentially causes the query to run twice
-    //  we would like to use the value from the live query
-    //  but drizzle does some fancy mapping that we need and can't replicate,
-    //  so we only use the value from the drizzle query
-    const live = await pg.live.query(
-      sql.sql,
-      sql.params.map((it) => toValue(it)),
-    )
-
-    live.subscribe(async () => {
-      await client.invalidateQueries({
-        queryKey,
-      })
-    })
-
-    onCleanup(async () => {
-      await live.unsubscribe()
-    })
+    onCleanup(unsubscribe)
   })
 
   return useQuery({
@@ -126,6 +169,7 @@ export function useDBQuery<TQuery extends DBQueryType = DBQueryType>(
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-expect-error
     initialData: () => isPgCount(queryRef.value!) ? 0 : [],
+    placeholderData: keepPreviousData,
   })
 }
 

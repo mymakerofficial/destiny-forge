@@ -4,7 +4,12 @@ import PlaygroundContent from '@/components/PlaygroundContent.vue'
 </script>
 
 <template>
-  <ErrorBoundary>
-    <PlaygroundContent />
-  </ErrorBoundary>
+  <div class="flex flex-wrap">
+    <ErrorBoundary>
+      <PlaygroundContent />
+    </ErrorBoundary>
+    <ErrorBoundary>
+      <PlaygroundContent />
+    </ErrorBoundary>
+  </div>
 </template>
