@@ -1,4 +1,4 @@
-import { type DefaultError, useMutation, type UseMutationOptions } from '@tanstack/vue-query'
+import { type DefaultError, type MutationOptions, useMutation } from '@tanstack/vue-query'
 import { useAlert } from '@/lib/alert.ts'
 
 export function useHandledMutation<
@@ -6,22 +6,24 @@ export function useHandledMutation<
   TError = DefaultError,
   TVariables = void,
   TContext = unknown,
->(options: UseMutationOptions<TData, TError, TVariables, TContext>) {
+>(options: MutationOptions<TData, TError, TVariables, TContext>) {
   const alert = useAlert()
 
   return useMutation({
     ...options,
-    onError: (error) => {
+    onError: (error, variables, context) => {
       alert.open({
         variant: 'destructive',
         title: 'Mutation Error',
         message: isError(error) ? error.message : undefined,
       })
-      return options.onError?.(error) ?? void 0
+
+      return options.onError?.(error, variables, context)
     },
-    onMutate: () => {
+    onMutate: (variables) => {
       alert.close()
-      return options.onMutate?.() ?? void 0
+
+      return options.onMutate?.(variables)
     },
   })
 }

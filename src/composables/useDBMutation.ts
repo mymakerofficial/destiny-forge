@@ -1,61 +1,49 @@
 import { type Drizzle, injectDrizzle } from '@/lib/drizzle.ts'
 import * as schema from '@/db/schema.ts'
-import { type DefaultError, type UseMutationOptions } from '@tanstack/vue-query'
-import { type AnyPgUpdate } from 'drizzle-orm/pg-core'
-import type { AnyPgInsert } from 'drizzle-orm/pg-core/query-builders/insert'
-import type { AnyPgDeleteBase } from 'drizzle-orm/pg-core/query-builders/delete'
-import { SQL } from 'drizzle-orm'
+import { type DefaultError, type MutationOptions } from '@tanstack/vue-query'
 import { useHandledMutation } from '@/composables/useHandledMutation.ts'
+import type { SQLWrapper } from 'drizzle-orm/sql/sql'
+import type { SQL } from 'drizzle-orm'
 
 export type DBMutationFunctionContext = {
   db: Drizzle
 } & typeof schema
 
-type MaybePromise<T> = T | Promise<T>
-
 export type DBMutationOptions<
   TData = unknown,
   TError = DefaultError,
-  TVariables = void,
+  TVariables = unknown,
   TContext = unknown,
-> = Omit<UseMutationOptions<TData, TError, TVariables, TContext>, 'mutationFn'> & {
-  mutation: (
-    variables: TVariables,
-    context: DBMutationFunctionContext,
-  ) => MaybePromise<AnyPgInsert | AnyPgUpdate | AnyPgDeleteBase | SQL | void> | string
+> = Omit<MutationOptions<TData, TError, TVariables, TContext>, 'mutationFn'> & {
+  mutation: (variables: TVariables, context: DBMutationFunctionContext) => SQLWrapper | SQL | string | Promise<void> | void
 }
 
-export function useDBMutation<
-  TData = unknown,
-  TError = DefaultError,
-  TVariables = void,
-  TContext = unknown,
->(options: DBMutationOptions<TData, TError, TVariables, TContext>) {
+export function useDBMutation<TError = DefaultError, TVariables = unknown, TContext = unknown>(
+  options: DBMutationOptions<void, TError, TVariables, TContext>,
+) {
   const db = injectDrizzle()
 
   const { mutation, ...rest } = options
 
-  return useHandledMutation({
+  return useHandledMutation<void, TError, TVariables, TContext>({
     ...rest,
-    // idk
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    // @ts-ignore
-    mutationFn: (variables: TVariables) => {
+    mutationFn: async (variables: TVariables) => {
       const res = mutation(variables, { db, ...schema })
 
       if (isPromise(res)) {
-        return res
+        await res
+        return
       }
 
       if (!res) {
         return
       }
 
-      return db.execute(res)
+      await db.execute(res)
     },
   })
 }
 
-function isPromise<T>(value: T | Promise<T>): value is Promise<T> {
+function isPromise<T, G = T>(value: T | Promise<G>): value is Promise<G> {
   return value instanceof Promise
 }
