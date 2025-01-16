@@ -4,7 +4,7 @@ import { sql } from 'drizzle-orm'
 export const items = pgTable('items', {
   id: uuid().primaryKey().defaultRandom(),
   name: text(),
-  createdAt: timestamp('created_at').default('now()'),
+  createdAt: timestamp('created_at').defaultNow(),
 }, (table) => ({
   nameNotEmpty: check('name_not_empty', sql`${table.name} <> ''`),
 }))
