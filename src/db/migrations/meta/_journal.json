@@ -15,6 +15,13 @@
       "when": 1737015203985,
       "tag": "0001_third_shriek",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1737034496841,
+      "tag": "0002_sour_proudstar",
+      "breakpoints": true
     }
   ]
 }

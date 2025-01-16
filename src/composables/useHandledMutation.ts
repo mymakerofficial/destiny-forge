@@ -17,10 +17,11 @@ export function useHandledMutation<
         title: 'Mutation Error',
         message: isError(error) ? error.message : undefined,
       })
+      return options.onError?.(error) ?? void 0
     },
     onMutate: () => {
       alert.close()
-      return undefined
+      return options.onMutate?.() ?? void 0
     },
   })
 }
