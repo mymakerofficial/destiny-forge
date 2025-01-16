@@ -12,6 +12,7 @@ import { toast, Toaster } from 'vue-sonner'
 import { PGliteWorker } from '@electric-sql/pglite/worker'
 import { onMounted, ref } from 'vue'
 import { LoaderCircle } from 'lucide-vue-next'
+import type { PGlite } from '@electric-sql/pglite'
 
 const completed = ref(false)
 
@@ -24,7 +25,7 @@ const client = new PGliteWorker(
       live,
     },
   },
-)
+) as unknown as PGlite
 
 const db = drizzle({
   client,
