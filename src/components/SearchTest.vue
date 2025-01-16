@@ -8,7 +8,7 @@ import { type Column, desc, getTableColumns, gt, sql } from 'drizzle-orm'
 const input = ref('')
 
 function similarity(a: Column, b: string) {
-  return sql<number>`similarity(metaphone(${a}, 10), metaphone(${b}, 10))`
+  return sql<number>`word_similarity(${a}, ${b})`
 }
 
 const { data: items } = useDBQuery({
@@ -22,7 +22,7 @@ const { data: items } = useDBQuery({
         .from(items),
     )
 
-    return db.with(sq).select().from(sq).where(gt(sq.score, 0.1)).orderBy(desc(sq.score))
+    return db.with(sq).select().from(sq).where(gt(sq.score, 0.01)).orderBy(desc(sq.score))
   },
 })
 </script>
