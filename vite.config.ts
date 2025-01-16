@@ -15,6 +15,10 @@ export default defineConfig({
       plugins: [tailwind(), autoprefixer()],
     },
   },
+  worker: {
+    // avoid "UMD and IIFE output formats are not supported for code-splitting builds." error
+    format: 'es',
+  },
   plugins: [vue(), vueDevTools()],
   resolve: {
     alias: {
