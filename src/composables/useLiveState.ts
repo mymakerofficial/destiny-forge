@@ -15,7 +15,7 @@ export const useLiveState = createGlobalState(() => {
     }
   >()
 
-  function unsubscribe(sql: string) {
+  async function unsubscribe(sql: string) {
     const existing = queryMap.get(sql)
 
     if (!existing) {
@@ -31,26 +31,38 @@ export const useLiveState = createGlobalState(() => {
     }
   }
 
-  function subscribe({ sql, params }: Query): () => void {
+  async function subscribe({ sql, params }: Query): Promise<() => Promise<void>> {
     const existing = queryMap.get(sql)
 
     if (existing) {
       existing.count++
     } else {
+      const abortController = new AbortController()
+
       queryMap.set(sql, {
         count: 1,
-        unsubscribe: () => Promise.resolve(),
+        unsubscribe: () => {
+          // aborting the signal is the same as unsubscribing all listeners
+          abortController.abort()
+          queryMap.delete(sql)
+          return Promise.resolve()
+        },
       })
 
-      pg.live.query(sql, params).then((live) => {
-        queryMap.get(sql)!.unsubscribe = live.unsubscribe
+      const live = await pg.live.query({
+        query: sql,
+        params,
+        signal: abortController.signal,
+      })
 
+      if (queryMap.get(sql)) {
+        // if the query has not been aborted subscribe to updates
         live.subscribe(async () => {
           await client.invalidateQueries({
             queryKey: ['dbQuery', sql],
           })
         })
-      })
+      }
     }
 
     return () => unsubscribe(sql)

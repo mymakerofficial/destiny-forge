@@ -60,7 +60,7 @@ export function useDBQuery<
 
   const queryKey = computed(() => ['dbQuery', sqlRef.value.sql, ...sqlRef.value.params])
 
-  watchEffect((onCleanup) => {
+  watchEffect(async (onCleanup) => {
     const res =
       typeof options.query === 'function'
         ? options.query({ db, ...schema })
@@ -85,7 +85,7 @@ export function useDBQuery<
       throw new Error('Invalid query')
     }
 
-    const unsubscribe = live.subscribe(sqlQuery)
+    const unsubscribe = await live.subscribe(sqlQuery)
 
     queryRef.value = query
     sqlRef.value = sqlQuery
