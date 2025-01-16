@@ -1,29 +1,40 @@
 import { type Drizzle, injectDrizzle } from '@/lib/drizzle.ts'
-import { type UseQueryReturnType, useQuery } from '@tanstack/vue-query'
-import { computed, type Ref, shallowRef, watchEffect } from 'vue'
+import { useQuery, type UseQueryReturnType } from '@tanstack/vue-query'
+import { computed, type MaybeRefOrGetter, type Ref, shallowRef, toValue, watchEffect } from 'vue'
 import type { Query, SQLWrapper } from 'drizzle-orm/sql/sql'
 import * as schema from '@/db/schema.ts'
 import { PgDialect, type PgSelect, type PgSelectDynamic } from 'drizzle-orm/pg-core'
 import { PgCountBuilder } from 'drizzle-orm/pg-core/query-builders/count'
-import { is, SQL } from 'drizzle-orm'
+import { is, sql, SQL } from 'drizzle-orm'
 import { useLiveState } from '@/composables/useLiveState.ts'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type DBQueryDynamicType = PgSelectDynamic<any> | PgCountBuilder<any> | SQL
+
+type QueryResultType<
+  // override for data returned by the query
+  TData = void,
+  // actual return type of the query
+  TQueryFnData extends SQLWrapper | string = SQLWrapper | string,
+> = TData extends void
+  ? TQueryFnData extends SQL<infer T>
+    ? T
+    : TQueryFnData extends string
+      ? TData[]
+      : Awaited<TQueryFnData>
+  : TData[]
 
 export type UseDBQueryFunctionContext = {
   db: Drizzle
 } & typeof schema
 
 export type UseDBQueryOptions<
-  TData extends { [key: string]: unknown } | unknown = unknown,
-  TQuery extends SQLWrapper = SQLWrapper,
-  // if TData is given, return it, otherwise return the result of the query
-  TQueryResult = TData extends { [key: string]: unknown } ? TData : Awaited<TQuery>,
-  TResult = TQueryResult,
+  // override for data returned by the query
+  TData = void,
+  // actual return type of the query
+  TQueryFnData extends SQLWrapper | string = SQLWrapper | string,
 > = {
-  query: (context: UseDBQueryFunctionContext) => TQuery
-  select?: (data: TQueryResult) => TResult
+  query: ((context: UseDBQueryFunctionContext) => TQueryFnData) | MaybeRefOrGetter<TQueryFnData>
 }
 
 export type UseDBQueryReturnType<TResult> = {
@@ -31,12 +42,12 @@ export type UseDBQueryReturnType<TResult> = {
 } & Omit<UseQueryReturnType<TResult, Error>, 'data'>
 
 export function useDBQuery<
-  TData extends { [key: string]: unknown } | unknown = unknown,
-  TQuery extends SQLWrapper = SQLWrapper,
-  // if TData is given, return it, otherwise return the result of the query
-  TQueryResult = TData extends { [key: string]: unknown } ? TData : Awaited<TQuery>,
-  TResult = TQueryResult,
->(options: UseDBQueryOptions<TData, TQuery, TQueryResult, TResult>): UseDBQueryReturnType<TResult> {
+  // override for data returned by the query
+  TData = void,
+  // actual return type of the query
+  TQueryFnData extends SQLWrapper | string = SQLWrapper | string,
+  TResult = QueryResultType<TData, TQueryFnData>,
+>(options: UseDBQueryOptions<TData, TQueryFnData>): UseDBQueryReturnType<TResult> {
   const db = injectDrizzle()
   const live = useLiveState()
   const dialect = new PgDialect()
@@ -50,28 +61,34 @@ export function useDBQuery<
   const queryKey = computed(() => ['dbQuery', sqlRef.value.sql, ...sqlRef.value.params])
 
   watchEffect((onCleanup) => {
-    const res = options.query({ db, ...schema })
+    const res =
+      typeof options.query === 'function'
+        ? options.query({ db, ...schema })
+        : toValue(options.query)
 
     let query: DBQueryDynamicType
-    let sql: Query
+    let sqlQuery: Query
 
-    if (isPgSelect(res)) {
+    if (isString(res)) {
+      query = sql.raw(res)
+      sqlQuery = dialect.sqlToQuery(query.getSQL())
+    } else if (isPgSelect(res)) {
       query = res.$dynamic()
-      sql = dialect.sqlToQuery(query.getSQL())
+      sqlQuery = dialect.sqlToQuery(query.getSQL())
     } else if (isPgCount(res)) {
       query = res
-      sql = dialect.sqlToQuery(query.getSQL())
+      sqlQuery = dialect.sqlToQuery(query.getSQL())
     } else if (isSQL(res)) {
       query = res
-      sql = dialect.sqlToQuery(res)
+      sqlQuery = dialect.sqlToQuery(res)
     } else {
       throw new Error('Invalid query')
     }
 
-    const unsubscribe = live.subscribe(sql)
+    const unsubscribe = live.subscribe(sqlQuery)
 
     queryRef.value = query
-    sqlRef.value = sql
+    sqlRef.value = sqlQuery
 
     onCleanup(unsubscribe)
   })
@@ -94,6 +111,14 @@ export function useDBQuery<
     initialData: () => (isPgCount(queryRef.value!) ? 0 : []),
     refetchOnWindowFocus: false,
   }) as UseDBQueryReturnType<TResult>
+}
+
+export function first<T>(arr: T[]): T | undefined {
+  return arr[0]
+}
+
+function isString(query: unknown): query is string {
+  return typeof query === 'string'
 }
 
 function isPgSelect(query: SQLWrapper): query is PgSelect {
