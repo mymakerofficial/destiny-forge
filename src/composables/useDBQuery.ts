@@ -1,116 +1,42 @@
 import { type Drizzle, injectDrizzle } from '@/lib/drizzle.ts'
-import {
-  type DefaultError,
-  useQuery,
-  useQueryClient,
-  type UseQueryReturnType,
-} from '@tanstack/vue-query'
-import { computed, shallowRef, watchEffect } from 'vue'
-import { injectPGlite } from '@/lib/pglite.ts'
-import { type PgSelectBase } from 'drizzle-orm/pg-core/query-builders/select'
-import type { ColumnsSelection, Query, SQLWrapper } from 'drizzle-orm/sql/sql'
-import type {
-  JoinNullability,
-  SelectMode,
-  SelectResult,
-} from 'drizzle-orm/query-builders/select.types'
+import { type UseQueryReturnType, useQuery } from '@tanstack/vue-query'
+import { computed, type Ref, shallowRef, watchEffect } from 'vue'
+import type { Query, SQLWrapper } from 'drizzle-orm/sql/sql'
 import * as schema from '@/db/schema.ts'
-import { PgDialect, type PgSelect } from 'drizzle-orm/pg-core'
+import { PgDialect, type PgSelect, type PgSelectDynamic } from 'drizzle-orm/pg-core'
 import { PgCountBuilder } from 'drizzle-orm/pg-core/query-builders/count'
 import { is, SQL } from 'drizzle-orm'
-import { createGlobalState } from '@vueuse/core'
-
-// stupidly complex type that allows us to accept drizzle queries at any stage of construction
-//  without the user needing to use $dynamic
-export type RelaxedPgSelect<
-  TTableName extends string | undefined = string | undefined,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  TSelection extends ColumnsSelection = Record<string, any>,
-  TSelectMode extends SelectMode = SelectMode,
-  TNullabilityMap extends Record<string, JoinNullability> = Record<string, JoinNullability>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  TResult extends any[] = SelectResult<TSelection, TSelectMode, TNullabilityMap>[],
-> = Pick<
-  PgSelectBase<TTableName, TSelection, TSelectMode, TNullabilityMap, boolean, never, TResult>,
-  '$dynamic'
->
+import { useLiveState } from '@/composables/useLiveState.ts'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type DBQueryType = RelaxedPgSelect | PgCountBuilder<any> | SQLWrapper
+export type DBQueryDynamicType = PgSelectDynamic<any> | PgCountBuilder<any> | SQL
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type DBQueryDynamicType = PgSelect | PgCountBuilder<any> | SQL
-
-export type DBQueryFunctionContext = {
+export type UseDBQueryFunctionContext = {
   db: Drizzle
 } & typeof schema
 
-export type DBQueryOptions<TQuery extends DBQueryType> = {
-  query: (context: DBQueryFunctionContext) => TQuery
+export type UseDBQueryOptions<
+  TData extends { [key: string]: unknown } | unknown = unknown,
+  TQuery extends SQLWrapper = SQLWrapper,
+  // if TData is given, return it, otherwise return the result of the query
+  TQueryResult = TData extends { [key: string]: unknown } ? TData : Awaited<TQuery>,
+  TResult = TQueryResult,
+> = {
+  query: (context: UseDBQueryFunctionContext) => TQuery
+  select?: (data: TQueryResult) => TResult
 }
 
-const useLiveState = createGlobalState(() => {
-  const pg = injectPGlite()
-  const client = useQueryClient()
+export type UseDBQueryReturnType<TResult> = {
+  data: Ref<Readonly<TResult>>
+} & Omit<UseQueryReturnType<TResult, Error>, 'data'>
 
-  const queryMap = new Map<
-    string,
-    {
-      count: number
-      unsubscribe: () => Promise<void>
-    }
-  >()
-
-  function unsubscribe(sql: string) {
-    const existing = queryMap.get(sql)
-
-    if (!existing) {
-      return
-    }
-
-    existing.count--
-
-    if (existing.count === 0) {
-      existing.unsubscribe().then(() => {
-        queryMap.delete(sql)
-      })
-    }
-  }
-
-  function subscribe({ sql, params }: Query): () => void {
-    const existing = queryMap.get(sql)
-
-    if (existing) {
-      existing.count++
-    } else {
-      queryMap.set(sql, {
-        count: 1,
-        unsubscribe: () => Promise.resolve(),
-      })
-
-      pg.live.query(sql, params).then((live) => {
-        queryMap.get(sql)!.unsubscribe = live.unsubscribe
-
-        live.subscribe(async () => {
-          await client.invalidateQueries({
-            queryKey: ['dbQuery', sql],
-          })
-        })
-      })
-    }
-
-    return () => unsubscribe(sql)
-  }
-
-  return {
-    subscribe,
-    unsubscribe,
-  }
-})
-
-export function useDBQuery<TQuery extends DBQueryType = DBQueryType>(
-  options: DBQueryOptions<TQuery>,
-): UseQueryReturnType<Awaited<TQuery>, DefaultError> {
+export function useDBQuery<
+  TData extends { [key: string]: unknown } | unknown = unknown,
+  TQuery extends SQLWrapper = SQLWrapper,
+  // if TData is given, return it, otherwise return the result of the query
+  TQueryResult = TData extends { [key: string]: unknown } ? TData : Awaited<TQuery>,
+  TResult = TQueryResult,
+>(options: UseDBQueryOptions<TData, TQuery, TQueryResult, TResult>): UseDBQueryReturnType<TResult> {
   const db = injectDrizzle()
   const live = useLiveState()
   const dialect = new PgDialect()
@@ -161,25 +87,24 @@ export function useDBQuery<TQuery extends DBQueryType = DBQueryType>(
       }
 
       // awaiting the query causes it to run
-      return (await query)
+      return query
     },
     // should always be true by this point but just to be safe
     enabled: () => queryRef.value !== undefined,
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-expect-error
     initialData: () => (isPgCount(queryRef.value!) ? 0 : []),
-  })
+    refetchOnWindowFocus: false,
+  }) as UseDBQueryReturnType<TResult>
 }
 
-function isPgSelect(query: DBQueryType): query is PgSelect {
+function isPgSelect(query: SQLWrapper): query is PgSelect {
   return '$dynamic' in query
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function isPgCount(query: DBQueryType): query is PgCountBuilder<any> {
+function isPgCount(query: SQLWrapper): query is PgCountBuilder<any> {
   return is(query, PgCountBuilder)
 }
 
-function isSQL(query: DBQueryType): query is SQL {
+function isSQL(query: SQLWrapper): query is SQL {
   return is(query, SQL) && !isPgCount(query)
 }
