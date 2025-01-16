@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
-import { PGlite } from '@electric-sql/pglite'
 import { live, type PGliteWithLive } from '@electric-sql/pglite/live'
 import { providePGlite } from '@electric-sql/pglite-vue'
 import { drizzle } from 'drizzle-orm/pglite'
@@ -8,16 +7,24 @@ import * as schema from '@/db/schema'
 import { provideDrizzle } from '@/lib/drizzle.ts'
 import ErrorBoundary from '@/components/error/ErrorBoundary.vue'
 import ScopedAlert from '@/components/error/ScopedAlert.vue'
-import { migrator } from '@/lib/migrator.ts'
+import { migrate } from '@/lib/migrator.ts'
 import { toast, Toaster } from 'vue-sonner'
+import { PGliteWorker } from '@electric-sql/pglite/worker'
+import { onMounted, ref } from 'vue'
+import { LoaderCircle } from 'lucide-vue-next'
 
-const client = new PGlite({
-  dataDir: 'idb://destiny',
-  extensions: {
-    live,
-    migrator,
+const completed = ref(false)
+
+const client = new PGliteWorker(
+  new Worker(new URL('@/lib/pgliteWorker', import.meta.url), {
+    type: 'module',
+  }),
+  {
+    extensions: {
+      live,
+    },
   },
-})
+)
 
 const db = drizzle({
   client,
@@ -34,11 +41,23 @@ const db = drizzle({
 
 providePGlite(client as unknown as PGliteWithLive)
 provideDrizzle(db)
+
+onMounted(async () => {
+  await migrate(client)
+
+  completed.value = true
+})
 </script>
 
 <template>
-  <ErrorBoundary>
-    <Toaster :visible-toasts="10" expand />
+  <Toaster :visible-toasts="10" />
+  <main v-if="!completed" class="h-screen flex items-center justify-center">
+    <div class="flex flex-row gap-2 items-center text-muted-foreground">
+      <LoaderCircle class="animate-spin size-6" />
+      <p class="text-lg">Initiating database...</p>
+    </div>
+  </main>
+  <ErrorBoundary v-else>
     <ScopedAlert />
     <RouterView />
   </ErrorBoundary>
