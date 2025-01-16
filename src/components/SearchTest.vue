@@ -3,24 +3,26 @@ import { ref } from 'vue'
 import { Input } from '@/components/ui/input'
 import { Search } from 'lucide-vue-next'
 import { useDBQuery } from '@/composables/useDBQuery.ts'
-import { desc, getTableColumns, gt, sql } from 'drizzle-orm'
+import { type Column, desc, getTableColumns, gt, sql } from 'drizzle-orm'
 
 const input = ref('')
 
+function similarity(a: Column, b: string) {
+  return sql<number>`similarity(metaphone(${a}, 10), metaphone(${b}, 10))`
+}
+
 const { data: items } = useDBQuery({
   query: ({ db, items }) => {
-    const sq = db
-      .select({
-        ...getTableColumns(items),
-        score:
-          sql<number>`similarity(metaphone(${items.name},10), metaphone(${input.value},10))`.as(
-            'score',
-          ),
-      })
-      .from(items)
-      .as('sq')
+    const sq = db.$with('sq').as(
+      db
+        .select({
+          ...getTableColumns(items),
+          score: similarity(items.name, input.value).as('score'),
+        })
+        .from(items),
+    )
 
-    return db.select().from(sq).where(gt(sq.score, 0.1)).orderBy(desc(sq.score))
+    return db.with(sq).select().from(sq).where(gt(sq.score, 0.1)).orderBy(desc(sq.score))
   },
 })
 </script>
