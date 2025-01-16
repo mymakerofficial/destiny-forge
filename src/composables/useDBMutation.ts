@@ -1,4 +1,4 @@
-import { type Drizzle, injectDrizzle } from '@/lib/drizzle.ts'
+import { type Drizzle, useDrizzle } from '@/lib/drizzle.ts'
 import * as schema from '@/db/schema.ts'
 import { type DefaultError, type MutationOptions } from '@tanstack/vue-query'
 import { useHandledMutation } from '@/composables/useHandledMutation.ts'
@@ -15,13 +15,16 @@ export type DBMutationOptions<
   TVariables = unknown,
   TContext = unknown,
 > = Omit<MutationOptions<TData, TError, TVariables, TContext>, 'mutationFn'> & {
-  mutation: (variables: TVariables, context: DBMutationFunctionContext) => SQLWrapper | SQL | string | Promise<void> | void
+  mutation: (
+    variables: TVariables,
+    context: DBMutationFunctionContext,
+  ) => SQLWrapper | SQL | string | Promise<void> | void
 }
 
 export function useDBMutation<TError = DefaultError, TVariables = unknown, TContext = unknown>(
   options: DBMutationOptions<void, TError, TVariables, TContext>,
 ) {
-  const db = injectDrizzle()
+  const db = useDrizzle()
 
   const { mutation, ...rest } = options
 

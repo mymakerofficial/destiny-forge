@@ -1,4 +1,4 @@
-import { type Drizzle, injectDrizzle } from '@/lib/drizzle.ts'
+import { type Drizzle, useDrizzle } from '@/lib/drizzle.ts'
 import { useQuery, type UseQueryReturnType } from '@tanstack/vue-query'
 import { computed, type MaybeRefOrGetter, type Ref, shallowRef, toValue, watchEffect } from 'vue'
 import type { Query, SQLWrapper } from 'drizzle-orm/sql/sql'
@@ -48,7 +48,7 @@ export function useDBQuery<
   TQueryFnData extends SQLWrapper | string = SQLWrapper | string,
   TResult = QueryResultType<TData, TQueryFnData>,
 >(options: UseDBQueryOptions<TData, TQueryFnData>): UseDBQueryReturnType<TResult> {
-  const db = injectDrizzle()
+  const db = useDrizzle()
   const live = useLiveState()
   const dialect = new PgDialect()
 

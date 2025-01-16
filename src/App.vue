@@ -47,6 +47,11 @@ provideDrizzle(db)
 onMounted(async () => {
   await client.waitReady
 
+  message.value = 'Loading extensions'
+
+  await client.exec('CREATE EXTENSION IF NOT EXISTS pg_trgm;')
+  await client.exec('CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;')
+
   await migrate(client, (_, msg) => {
     message.value = msg
   })
