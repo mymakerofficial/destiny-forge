@@ -14,14 +14,17 @@ export function useHandledMutation<
     onError: (error) => {
       alert.open({
         variant: 'destructive',
-        title: 'Error',
-        message: error.message,
+        title: 'Mutation Error',
+        message: isError(error) ? error.message : undefined,
       })
-      return options.onError?.(error)
     },
     onMutate: () => {
       alert.close()
-      return options.onMutate?.()
+      return undefined
     },
   })
+}
+
+function isError(error: any): error is Error {
+  return error instanceof Error
 }

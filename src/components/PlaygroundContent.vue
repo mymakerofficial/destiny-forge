@@ -63,7 +63,7 @@ function handleAdd() {
     </form>
     <hr />
     <div class="flex gap-2 items-center justify-between">
-      <b>Showing {{ data.length }} items of {{ count }}</b>
+      <b>Showing {{ data?.length }} items of {{ count }}</b>
       <div class="flex gap-2 items-center">
         <Input v-model="limit" type="number" class="w-min" />
         <Button @click="() => (limit -= 1)">-</Button>

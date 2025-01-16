@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
 import { PGlite } from '@electric-sql/pglite'
-import { live } from '@electric-sql/pglite/live'
+import { live, type PGliteWithLive } from '@electric-sql/pglite/live'
 import { providePGlite } from '@electric-sql/pglite-vue'
 import { drizzle } from 'drizzle-orm/pglite'
 import * as schema from '@/db/schema'
@@ -23,7 +23,7 @@ const db = drizzle({
   schema,
 })
 
-providePGlite(client)
+providePGlite(client as unknown as PGliteWithLive)
 provideDrizzle(db)
 </script>
 

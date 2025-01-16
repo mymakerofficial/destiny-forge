@@ -8,7 +8,7 @@ const importRaw = import.meta.glob('@/db/migrations/*.sql', {
 
 const migrationFiles = Object.fromEntries(
   Object.entries(importRaw).map(([path, loader]) => [
-    path.split('/').pop().replace('.sql', ''),
+    path.split('/').pop()?.replace('.sql', '') ?? '',
     loader,
   ]),
 )
@@ -55,7 +55,7 @@ export async function migrate(pg: PGliteInterface) {
     console.log(`[migrator] running migration '${tag}'`)
 
     // load the file content
-    const content = await migrationFiles[tag]()
+    const content = await migrationFiles[tag]() as string
 
     await pg.exec(content)
     await pg.query(`INSERT INTO drizzle.migrations (tag) VALUES ($1)`, [tag])

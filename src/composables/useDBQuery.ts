@@ -4,9 +4,8 @@ import {
   useQuery,
   useQueryClient,
   type UseQueryReturnType,
-  keepPreviousData,
 } from '@tanstack/vue-query'
-import { computed, onScopeDispose, shallowRef, toValue, watchEffect } from 'vue'
+import { computed, shallowRef, watchEffect } from 'vue'
 import { injectPGlite } from '@/lib/pglite.ts'
 import { type PgSelectBase } from 'drizzle-orm/pg-core/query-builders/select'
 import type { ColumnsSelection, Query, SQLWrapper } from 'drizzle-orm/sql/sql'
@@ -54,10 +53,13 @@ const useLiveState = createGlobalState(() => {
   const pg = injectPGlite()
   const client = useQueryClient()
 
-  const queryMap = new Map<string, {
-    count: number,
-    unsubscribe: () => Promise<void>,
-  }>
+  const queryMap = new Map<
+    string,
+    {
+      count: number
+      unsubscribe: () => Promise<void>
+    }
+  >()
 
   function unsubscribe(sql: string) {
     const existing = queryMap.get(sql)
@@ -69,36 +71,33 @@ const useLiveState = createGlobalState(() => {
     existing.count--
 
     if (existing.count === 0) {
-      existing.unsubscribe()
-      queryMap.delete(sql)
+      existing.unsubscribe().then(() => {
+        queryMap.delete(sql)
+      })
     }
   }
 
-  function subscribe({ sql, params }: Query) {
+  function subscribe({ sql, params }: Query): () => void {
     const existing = queryMap.get(sql)
 
     if (existing) {
       existing.count++
-      return
-    }
+    } else {
+      queryMap.set(sql, {
+        count: 1,
+        unsubscribe: () => Promise.resolve(),
+      })
 
-    queryMap.set(sql, {
-      count: 1,
-      unsubscribe: () => {}
-    })
+      pg.live.query(sql, params).then((live) => {
+        queryMap.get(sql)!.unsubscribe = live.unsubscribe
 
-    pg.live.query(
-      sql,
-      params,
-    ).then((live) => {
-      queryMap.get(sql)!.unsubscribe = live.unsubscribe
-
-      live.subscribe(async () => {
-        await client.invalidateQueries({
-          queryKey: ['dbQuery', sql],
+        live.subscribe(async () => {
+          await client.invalidateQueries({
+            queryKey: ['dbQuery', sql],
+          })
         })
       })
-    })
+    }
 
     return () => unsubscribe(sql)
   }
@@ -158,18 +157,17 @@ export function useDBQuery<TQuery extends DBQueryType = DBQueryType>(
 
       if (isSQL(query)) {
         // execute returns the raw result
-        return (await db.execute(query)).rows as Awaited<TQuery>
+        return (await db.execute(query)).rows
       }
 
       // awaiting the query causes it to run
-      return (await query) as Awaited<TQuery>
+      return (await query)
     },
     // should always be true by this point but just to be safe
     enabled: () => queryRef.value !== undefined,
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-expect-error
-    initialData: () => isPgCount(queryRef.value!) ? 0 : [],
-    placeholderData: keepPreviousData,
+    initialData: () => (isPgCount(queryRef.value!) ? 0 : []),
   })
 }
 

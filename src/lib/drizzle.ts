@@ -10,8 +10,8 @@ export function provideDrizzle(drizzle: Drizzle) {
   provide(drizzleKey, drizzle)
 }
 
-export function injectDrizzle(): Drizzle {
-  const drizzle = inject(drizzleKey)
+export function injectDrizzle()  {
+  const drizzle = inject<Drizzle>(drizzleKey)
   if (!drizzle) {
     throw new Error('Drizzle not provided')
   }

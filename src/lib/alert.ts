@@ -11,25 +11,25 @@ export type AlertInstance = {
   id: string
   variant: 'default' | 'destructive'
   title: string
-  message: string
+  message?: string
   actions: AlertAction[]
 }
 
 export type AlertOptions = {
   variant?: 'default' | 'destructive'
   title?: string
-  message: string
+  message?: string
   actions?: AlertAction[]
 }
 
-const [useProvideAlertContext, useAlertContext] = createInjectionState(() => {
+const [useProvideAlertContext, useInjectAlertContext] = createInjectionState(() => {
   const alerts = ref<AlertInstance[]>([])
 
   function addAlert(id: string, alert: AlertOptions) {
     alerts.value.push({
       id,
       variant: alert.variant || 'default',
-      title: alert.title || '',
+      title: alert.title || 'Unexpected Error',
       message: alert.message,
       actions: [
         ...(alert.actions || []),
@@ -48,7 +48,15 @@ const [useProvideAlertContext, useAlertContext] = createInjectionState(() => {
   return { alerts, addAlert, removeAlert }
 })
 
-export { useAlertContext }
+export function useAlertContext() {
+  const context = useInjectAlertContext()
+
+  if (!context) {
+    throw new Error('useAlertContext must be used within a ErrorBoundary')
+  }
+
+  return context
+}
 
 export function createErrorBoundary() {
   const context = useProvideAlertContext()
@@ -67,11 +75,6 @@ export function createErrorBoundary() {
 
 export function useAlert() {
   const context = useAlertContext()
-
-  if (!context) {
-    throw new Error('useAlert must be used within a ErrorBoundary')
-  }
-
   const id = uuidv4()
 
   function open(alert: AlertOptions) {

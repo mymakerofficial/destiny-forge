@@ -22,7 +22,7 @@ export type DBMutationOptions<
   mutation: (
     variables: TVariables,
     context: DBMutationFunctionContext,
-  ) => MaybePromise<AnyPgInsert | AnyPgUpdate | AnyPgDeleteBase | SQL | string>
+  ) => MaybePromise<AnyPgInsert | AnyPgUpdate | AnyPgDeleteBase | SQL | void> | string
 }
 
 export function useDBMutation<
@@ -37,11 +37,18 @@ export function useDBMutation<
 
   return useHandledMutation({
     ...rest,
+    // idk
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // @ts-ignore
     mutationFn: (variables: TVariables) => {
       const res = mutation(variables, { db, ...schema })
 
       if (isPromise(res)) {
         return res
+      }
+
+      if (!res) {
+        return
       }
 
       return db.execute(res)
