@@ -9,6 +9,7 @@ import { provideDrizzle } from '@/lib/drizzle.ts'
 import ErrorBoundary from '@/components/error/ErrorBoundary.vue'
 import ScopedAlert from '@/components/error/ScopedAlert.vue'
 import { migrator } from '@/lib/migrator.ts'
+import { Toaster } from 'vue-sonner'
 
 const client = new PGlite({
   dataDir: 'idb://destiny',
@@ -29,6 +30,7 @@ provideDrizzle(db)
 
 <template>
   <ErrorBoundary>
+    <Toaster />
     <ScopedAlert />
     <RouterView />
   </ErrorBoundary>
