@@ -5,7 +5,7 @@ import ScopedAlert from '@/components/error/ScopedAlert.vue'
 import { toast, Toaster } from 'vue-sonner'
 import { PGliteWorker } from '@electric-sql/pglite/worker'
 import { live, type PGliteWithLive } from '@electric-sql/pglite/live'
-import { electricSync, type PGliteWithSync } from '@electric-sql/pglite-sync'
+import { electricSync } from '@electric-sql/pglite-sync'
 import { PGlite } from '@electric-sql/pglite'
 import { drizzle } from 'drizzle-orm/pglite'
 import * as schema from '@/db/schema.ts'
@@ -15,6 +15,7 @@ import { onMounted, reactive } from 'vue'
 import { migrate, MigratorStatus } from '@/lib/migrator.ts'
 import { LoaderCircle } from 'lucide-vue-next'
 import { eq } from 'drizzle-orm'
+import type { PGliteWithExtensions } from '@/lib/pglite.ts'
 
 const loadingState = reactive({
   isComplete: false,
@@ -23,7 +24,7 @@ const loadingState = reactive({
   message: 'Getting ready...',
 })
 
-const client = new PGliteWorker(
+const pg = new PGliteWorker(
   new Worker(new URL('@/lib/pgliteWorker', import.meta.url), {
     type: 'module',
   }),
@@ -33,10 +34,10 @@ const client = new PGliteWorker(
       electric: electricSync({ debug: true }),
     },
   },
-) as PGlite & PGliteWithLive & PGliteWithSync
+) as unknown as PGliteWithExtensions
 
 const db = drizzle({
-  client,
+  client: pg as unknown as PGlite,
   schema,
   casing: 'snake_case',
   logger: {
@@ -49,22 +50,22 @@ const db = drizzle({
   },
 })
 
-providePGlite(client as unknown as PGliteWithLive)
+providePGlite(pg as unknown as PGliteWithLive)
 provideDrizzle(db)
 
 onMounted(async () => {
   loadingState.title = 'Starting database...'
   loadingState.message = 'Waiting for database to be ready'
 
-  await client.waitReady
+  await pg.waitReady
 
   loadingState.message = 'Loading extensions'
 
-  await client.exec('CREATE EXTENSION IF NOT EXISTS pg_trgm;')
-  await client.exec('CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;')
+  await pg.exec('CREATE EXTENSION IF NOT EXISTS pg_trgm;')
+  await pg.exec('CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;')
 
   loadingState.title = 'Migrating data...'
-  await migrate(client, (status, msg) => {
+  await migrate(pg, (status, msg) => {
     if (status === MigratorStatus.Error) {
       loadingState.isError = true
     }
@@ -73,10 +74,10 @@ onMounted(async () => {
 
   loadingState.title = 'Sync'
   loadingState.message = 'Setting up metadata tables for sync'
-  await client.electric.initMetadataTables()
+  await pg.electric.initMetadataTables()
 
   loadingState.message = 'Downloading data'
-  await client.electric.syncShapeToTable({
+  await pg.electric.syncShapeToTable({
     shape: {
       url: 'http://localhost:3000/v1/shape',
       params: {
@@ -94,7 +95,7 @@ onMounted(async () => {
     .from(schema.items)
     .where(eq(schema.items.isSynced, false))
     .toSQL()
-  await client.live.query({
+  await pg.live.query({
     query: getItemsNotSynced.sql,
     params: getItemsNotSynced.params,
     callback: (res) => {
@@ -111,7 +112,7 @@ onMounted(async () => {
     .from(schema.items)
     .where(eq(schema.items.isDecrypted, false))
     .toSQL()
-  await client.live.query({
+  await pg.live.query({
     query: getItemsNotDecrypted.sql,
     params: getItemsNotDecrypted.params,
     callback: (res) => {

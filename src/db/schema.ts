@@ -3,46 +3,51 @@ import {
   check,
   PgBooleanBuilder,
   pgTable,
+  PgTextBuilder,
   text,
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
+import type { ColumnBuilderBaseConfig, HasDefault, NotNull } from 'drizzle-orm/column-builder'
 import type { PgColumnBuilderBase } from 'drizzle-orm/pg-core/columns/common'
-import type { NotNull } from 'drizzle-orm/column-builder'
+
+type EncryptedColumnHelperReturnType<TColumnsMap extends Record<string, PgColumnBuilderBase>> = {
+  [K in keyof TColumnsMap]: TColumnsMap[K]
+} & {
+  [K in `encrypted${Capitalize<string & keyof TColumnsMap>}`]: HasDefault<
+    NotNull<PgTextBuilder<ColumnBuilderBaseConfig<'string', 'PgText'>>>
+  >
+} & {
+  ['isDecrypted']: HasDefault<
+    NotNull<PgBooleanBuilder<ColumnBuilderBaseConfig<'boolean', 'PgBoolean'>>>
+  >
+}
 
 function encrypted<TColumnsMap extends Record<string, PgColumnBuilderBase>>(
   columnsMap: TColumnsMap,
-): {
-  [K in keyof TColumnsMap]: TColumnsMap[K]
-} & {
-  [K in `encrypted${Capitalize<keyof TColumnsMap>}`]: TColumnsMap[K]
-} & {
-  ['isDecrypted']: NotNull<PgBooleanBuilder>
-} {
+): EncryptedColumnHelperReturnType<TColumnsMap> {
   return {
-    ...Object.fromEntries(
-      Object.entries(columnsMap).reduce((acc, [key, original]) => {
-        acc.push([key, original])
-
-        const pgName = `encrypted_${original.config.name || key}`
+    ...columnsMap,
+    ...Object.entries(columnsMap).reduce(
+      (acc, [key, original]) => {
+        const pgName = `encrypted_${original._.name || key}`
         const tsName = `encrypted${key.charAt(0).toUpperCase() + key.slice(1)}`
-        const encrypted = text(pgName).notNull().default('')
-
-        acc.push([tsName, encrypted])
+        acc[tsName] = text(pgName).notNull().default('')
         return acc
-      }, []),
+      },
+      {} as { [key: string]: unknown },
     ),
     isDecrypted: boolean('is_decrypted').notNull().default(false),
-  }
+  } as EncryptedColumnHelperReturnType<TColumnsMap>
 }
 
 const timestampColumns = {
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at')
     .notNull()
-    .default(sql`now()`)
-    .$onUpdate(sql`now()`),
+    .default(sql<Date>`now()`)
+    .$onUpdateFn(() => sql<Date>`now()`),
 }
 
 const syncColumns = {
