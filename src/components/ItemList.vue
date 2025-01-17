@@ -7,6 +7,7 @@ import { desc } from 'drizzle-orm'
 import { useDBMutation } from '@/composables/useDBMutation.ts'
 import { Plus, LoaderCircle } from 'lucide-vue-next'
 import ItemRow from '@/components/ItemRow.vue'
+import { getSessionId } from '@/lib/crypt.ts'
 
 const input = ref('')
 
@@ -19,7 +20,8 @@ const { data: itemCount } = useDBQuery({
 })
 
 const { mutate: addItem } = useDBMutation({
-  mutation: (name: string, { db, items }) => db.insert(items).values({ name }),
+  mutation: (name: string, { db, items }) =>
+    db.insert(items).values({ name, sessionId: getSessionId() }),
 })
 
 function handleAdd() {

@@ -1,0 +1,1 @@
+ALTER TABLE "items" ADD COLUMN "sent_to_server" boolean DEFAULT false NOT NULL;

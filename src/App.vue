@@ -14,8 +14,8 @@ import { provideDrizzle } from '@/lib/drizzle.ts'
 import { onMounted, reactive } from 'vue'
 import { migrate, MigratorStatus } from '@/lib/migrator.ts'
 import { LoaderCircle } from 'lucide-vue-next'
-import { eq } from 'drizzle-orm'
 import type { PGliteWithExtensions } from '@/lib/pglite.ts'
+import { setupSync } from '@/lib/sync.ts'
 
 const loadingState = reactive({
   isComplete: false,
@@ -42,7 +42,7 @@ const db = drizzle({
   casing: 'snake_case',
   logger: {
     logQuery(query: string, params: unknown[]): void {
-      console.log({ query, params })
+      console.log('Query:', { query, params })
       toast(`Query executed`, {
         description: `${query}\n${JSON.stringify(params)}`,
       })
@@ -73,53 +73,39 @@ onMounted(async () => {
   })
 
   loadingState.title = 'Sync'
-  loadingState.message = 'Setting up metadata tables for sync'
-  await pg.electric.initMetadataTables()
 
-  loadingState.message = 'Downloading data'
-  await pg.electric.syncShapeToTable({
-    shape: {
-      url: 'http://localhost:3000/v1/shape',
-      params: {
-        table: 'items',
-      },
-    },
-    table: 'items',
-    primaryKey: ['id'],
-  })
+  await setupSync(pg)
 
-  loadingState.message = 'Setting up live queries'
-
-  const getItemsNotSynced = db
-    .select()
-    .from(schema.items)
-    .where(eq(schema.items.isSynced, false))
-    .toSQL()
-  await pg.live.query({
-    query: getItemsNotSynced.sql,
-    params: getItemsNotSynced.params,
-    callback: (res) => {
-      console.log(res)
-      // TODO: send to server
-      //  encrypt text fields
-      //  omit original text fields
-      //  include session id
-    },
-  })
-
-  const getItemsNotDecrypted = db
-    .select()
-    .from(schema.items)
-    .where(eq(schema.items.isDecrypted, false))
-    .toSQL()
-  await pg.live.query({
-    query: getItemsNotDecrypted.sql,
-    params: getItemsNotDecrypted.params,
-    callback: (res) => {
-      console.log(res)
-      // TODO: decrypt and update locally
-    },
-  })
+  // const getItemsNotSynced = db
+  //   .select()
+  //   .from(schema.items)
+  //   .where(eq(schema.items.isSynced, false))
+  //   .toSQL()
+  // await pg.live.query({
+  //   query: getItemsNotSynced.sql,
+  //   params: getItemsNotSynced.params,
+  //   callback: (res) => {
+  //     console.log(res)
+  //     // TODO: send to server
+  //     //  encrypt text fields
+  //     //  omit original text fields
+  //     //  include session id
+  //   },
+  // })
+  //
+  // const getItemsNotDecrypted = db
+  //   .select()
+  //   .from(schema.items)
+  //   .where(eq(schema.items.isDecrypted, false))
+  //   .toSQL()
+  // await pg.live.query({
+  //   query: getItemsNotDecrypted.sql,
+  //   params: getItemsNotDecrypted.params,
+  //   callback: (res) => {
+  //     console.log(res)
+  //     // TODO: decrypt and update locally
+  //   },
+  // })
 
   loadingState.isComplete = true
 })
