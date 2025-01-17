@@ -11,7 +11,7 @@ import ScopedAlert from '@/components/error/ScopedAlert.vue'
     <MainContainer>
       <section class="mb-4">
         <h1 class="text-3xl font-bold">PostgreSQL reactive bindings demo</h1>
-        <p>PGlite + Drizzle + TanStack Query</p>
+        <p>PGlite + Drizzle + TanStack Query + ElectricSQL</p>
       </section>
       <ErrorBoundary>
         <ScopedAlert />

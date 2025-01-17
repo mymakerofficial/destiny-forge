@@ -7,7 +7,7 @@ import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm'
 worker({
   async init() {
     return await PGlite.create({
-      fs: new OpfsAhpFS('destiny'),
+      // fs: new OpfsAhpFS('destiny'),
       extensions: {
         pg_trgm,
         fuzzystrmatch,

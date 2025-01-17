@@ -13,6 +13,8 @@ function similarity(a: Column, b: string) {
 
 const { data: items } = useDBQuery({
   query: ({ db, items }) => {
+    console.log(items)
+
     const sq = db.$with('sq').as(
       db
         .select({

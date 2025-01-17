@@ -1,21 +1,27 @@
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
-import { live, type PGliteWithLive } from '@electric-sql/pglite/live'
-import { providePGlite } from '@electric-sql/pglite-vue'
-import { drizzle } from 'drizzle-orm/pglite'
-import * as schema from '@/db/schema'
-import { provideDrizzle } from '@/lib/drizzle.ts'
 import ErrorBoundary from '@/components/error/ErrorBoundary.vue'
 import ScopedAlert from '@/components/error/ScopedAlert.vue'
-import { migrate } from '@/lib/migrator.ts'
 import { toast, Toaster } from 'vue-sonner'
 import { PGliteWorker } from '@electric-sql/pglite/worker'
-import { onMounted, ref } from 'vue'
+import { live, type PGliteWithLive } from '@electric-sql/pglite/live'
+import { electricSync, type PGliteWithSync } from '@electric-sql/pglite-sync'
+import { PGlite } from '@electric-sql/pglite'
+import { drizzle } from 'drizzle-orm/pglite'
+import * as schema from '@/db/schema.ts'
+import { providePGlite } from '@electric-sql/pglite-vue'
+import { provideDrizzle } from '@/lib/drizzle.ts'
+import { onMounted, reactive } from 'vue'
+import { migrate, MigratorStatus } from '@/lib/migrator.ts'
 import { LoaderCircle } from 'lucide-vue-next'
-import type { PGlite } from '@electric-sql/pglite'
+import { eq } from 'drizzle-orm'
 
-const message = ref('Initiating database...')
-const completed = ref(false)
+const loadingState = reactive({
+  isComplete: false,
+  isError: false,
+  title: 'Loading',
+  message: 'Getting ready...',
+})
 
 const client = new PGliteWorker(
   new Worker(new URL('@/lib/pgliteWorker', import.meta.url), {
@@ -24,13 +30,15 @@ const client = new PGliteWorker(
   {
     extensions: {
       live,
+      electric: electricSync({ debug: true }),
     },
   },
-) as unknown as PGlite
+) as PGlite & PGliteWithLive & PGliteWithSync
 
 const db = drizzle({
   client,
   schema,
+  casing: 'snake_case',
   logger: {
     logQuery(query: string, params: unknown[]): void {
       console.log({ query, params })
@@ -45,27 +53,91 @@ providePGlite(client as unknown as PGliteWithLive)
 provideDrizzle(db)
 
 onMounted(async () => {
+  loadingState.title = 'Starting database...'
+  loadingState.message = 'Waiting for database to be ready'
+
   await client.waitReady
 
-  message.value = 'Loading extensions'
+  loadingState.message = 'Loading extensions'
 
   await client.exec('CREATE EXTENSION IF NOT EXISTS pg_trgm;')
   await client.exec('CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;')
 
-  await migrate(client, (_, msg) => {
-    message.value = msg
+  loadingState.title = 'Migrating data...'
+  await migrate(client, (status, msg) => {
+    if (status === MigratorStatus.Error) {
+      loadingState.isError = true
+    }
+    loadingState.message = msg
   })
 
-  completed.value = true
+  loadingState.title = 'Sync'
+  loadingState.message = 'Setting up metadata tables for sync'
+  await client.electric.initMetadataTables()
+
+  loadingState.message = 'Downloading data'
+  await client.electric.syncShapeToTable({
+    shape: {
+      url: 'http://localhost:3000/v1/shape',
+      params: {
+        table: 'items',
+      },
+    },
+    table: 'items',
+    primaryKey: ['id'],
+  })
+
+  loadingState.message = 'Setting up live queries'
+
+  const getItemsNotSynced = db
+    .select()
+    .from(schema.items)
+    .where(eq(schema.items.isSynced, false))
+    .toSQL()
+  await client.live.query({
+    query: getItemsNotSynced.sql,
+    params: getItemsNotSynced.params,
+    callback: (res) => {
+      console.log(res)
+      // TODO: send to server
+      //  encrypt text fields
+      //  omit original text fields
+      //  include session id
+    },
+  })
+
+  const getItemsNotDecrypted = db
+    .select()
+    .from(schema.items)
+    .where(eq(schema.items.isDecrypted, false))
+    .toSQL()
+  await client.live.query({
+    query: getItemsNotDecrypted.sql,
+    params: getItemsNotDecrypted.params,
+    callback: (res) => {
+      console.log(res)
+      // TODO: decrypt and update locally
+    },
+  })
+
+  loadingState.isComplete = true
 })
 </script>
 
 <template>
   <Toaster :visible-toasts="10" theme="dark" />
-  <main v-if="!completed" class="h-screen flex items-center justify-center">
-    <div class="flex flex-row gap-2 items-center text-muted-foreground">
-      <LoaderCircle class="animate-spin size-6" />
-      <p class="text-lg">{{ message }}</p>
+  <main v-if="!loadingState.isComplete" class="h-screen flex items-center justify-center">
+    <div
+      :data-error="loadingState.isError"
+      class="group px-6 flex flex-wrap gap-2 items-center data-[error=true]:text-destructive"
+    >
+      <div class="flex flex-row gap-2 items-center">
+        <LoaderCircle class="animate-spin size-6" />
+        <h1 class="text-lg font-medium truncate">{{ loadingState.title }}</h1>
+      </div>
+      <p class="text-lg text-muted-foreground group-data-[error=true]:text-destructive">
+        {{ loadingState.message }}
+      </p>
     </div>
   </main>
   <ErrorBoundary v-else>

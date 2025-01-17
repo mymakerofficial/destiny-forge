@@ -22,6 +22,13 @@
       "when": 1737034496841,
       "tag": "0002_sour_proudstar",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1737130115467,
+      "tag": "0003_young_iceman",
+      "breakpoints": true
     }
   ]
 }
