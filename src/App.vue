@@ -40,14 +40,14 @@ const db = drizzle({
   client: pg as unknown as PGlite,
   schema,
   casing: 'snake_case',
-  logger: {
-    logQuery(query: string, params: unknown[]): void {
-      console.log('Query:', { query, params })
-      toast(`Query executed`, {
-        description: `${query}\n${JSON.stringify(params)}`,
-      })
-    },
-  },
+  // logger: {
+  //   logQuery(query: string, params: unknown[]): void {
+  //     console.log('Query:', { query, params })
+  //     toast(`Query executed`, {
+  //       description: `${query}\n${JSON.stringify(params)}`,
+  //     })
+  //   },
+  // },
 })
 
 providePGlite(pg as unknown as PGliteWithLive)

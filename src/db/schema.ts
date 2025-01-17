@@ -49,7 +49,7 @@ const timestampColumns = {
   updatedAt: timestamp('updated_at')
     .notNull()
     .default(sql<Date>`now()`)
-    .$onUpdateFn(() => sql<Date>`now()`),
+    .$onUpdateFn(() => new Date()),
 }
 
 const syncColumns = {
@@ -60,9 +60,13 @@ const syncColumns = {
     .default(false)
     .$onUpdateFn(() => false),
   // set to true by client
-  sentToServer: boolean('sent_to_server')
+  isSentToServer: boolean('is_sent_to_server')
     .notNull()
     .default(false)
+    .$onUpdateFn(() => false),
+  isNew: boolean('is_new')
+    .notNull()
+    .default(true)
     .$onUpdateFn(() => false),
   isDecrypted: boolean('is_decrypted').notNull().default(false),
   sessionId: text('session_id'),

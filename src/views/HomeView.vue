@@ -4,6 +4,7 @@ import ItemList from '@/components/ItemList.vue'
 import MainContainer from '@/components/MainContainer.vue'
 import SearchTest from '@/components/SearchTest.vue'
 import ScopedAlert from '@/components/error/ScopedAlert.vue'
+import { getSessionId } from '../lib/crypt.ts'
 </script>
 
 <template>
@@ -17,11 +18,13 @@ import ScopedAlert from '@/components/error/ScopedAlert.vue'
         <ScopedAlert />
         <ItemList />
       </ErrorBoundary>
+      <!--      <hr class="my-12" />-->
+      <!--      <ErrorBoundary>-->
+      <!--        <ScopedAlert />-->
+      <!--        <SearchTest />-->
+      <!--      </ErrorBoundary>-->
       <hr class="my-12" />
-      <ErrorBoundary>
-        <ScopedAlert />
-        <SearchTest />
-      </ErrorBoundary>
+      <p class="text-muted-foreground font-xs">{{ getSessionId() }}</p>
     </MainContainer>
   </ErrorBoundary>
 </template>
