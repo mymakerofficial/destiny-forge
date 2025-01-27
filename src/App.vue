@@ -74,7 +74,7 @@ onMounted(async () => {
 
   loadingState.title = 'Sync'
 
-  await setupSync(pg)
+  await setupSync(pg, db)
 
   // const getItemsNotSynced = db
   //   .select()

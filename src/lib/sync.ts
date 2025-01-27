@@ -2,148 +2,207 @@ import type { PGliteWithExtensions } from '@/lib/pglite.ts'
 import type { SyncedTable } from '@/db/schema.ts'
 import * as schema from '@/db/schema.ts'
 import { getTableName, type InferSelectModel } from 'drizzle-orm/table'
-import { sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { PgDialect, PgTable, QueryBuilder } from 'drizzle-orm/pg-core'
 import { getSessionId } from '@/lib/crypt.ts'
 import { Mutex } from '@electric-sql/pglite'
-import type { ChangeMessage } from '@electric-sql/client'
+import type { Message } from '@electric-sql/client'
+import { isChangeMessage, ShapeStream } from '@electric-sql/client'
+import type { Drizzle } from '@/lib/drizzle.ts'
 
-const dialect = new PgDialect()
-const qb = new QueryBuilder()
+type RawSyncedTable = {
+  id: string
+}
 
-export async function setupSync(pg: PGliteWithExtensions) {
-  await pg.electric.initMetadataTables()
+export class SyncClient {
+  private readonly dialect = new PgDialect()
+  private readonly qb = new QueryBuilder()
 
-  const tablesToSync: SyncedTable[] = Object.values(schema).filter(isSyncedTable)
+  private readonly tablesToSync: SyncedTable[] = Object.values(schema).filter(isSyncedTable)
 
-  const changeSet = new Set<string>()
+  constructor(
+    private readonly pg: PGliteWithExtensions,
+    private readonly db: Drizzle,
+  ) {}
 
-  for (const table of tablesToSync) {
-    const tableName = getTableName(table)
+  async setup() {
+    await this.setupSyncToClient()
+    await this.setupSyncToServer()
+  }
 
-    await pg.electric.syncShapeToTable({
-      shape: {
+  async setupSyncToClient() {
+    for (const table of this.tablesToSync) {
+      const tableName = getTableName(table)
+
+      const stream = new ShapeStream<RawSyncedTable>({
         url: 'http://localhost:3000/v1/shape',
         params: {
           table: tableName,
           where: `"session_id"='${getSessionId()}'`,
         },
-      },
-      table: tableName,
-      primaryKey: ['id'],
-      commitGranularity: 'up-to-date',
-      mapColumns: (message: ChangeMessage) => {
-        // server can't change isSynced to true because it's always true on the server,
-        //  so we need to explicitly set it to true here
-        return {
-          ...message.value,
-          is_synced: true,
-          is_sent_to_server: false,
-          is_new: false,
+      })
+
+      stream.subscribe(async (messages) => {
+        for (const message of messages) {
+          await this.syncToClient(table, message)
         }
-      },
-    })
+      })
+    }
   }
 
-  await pg.exec(`ALTER TABLE items ENABLE TRIGGER ALL`)
+  async syncToClient(table: SyncedTable, message: Message<RawSyncedTable>) {
+    console.log('sync message', message)
 
-  await setupSyncToServer(pg, tablesToSync, changeSet)
-}
-
-async function setupSyncToServer(
-  pg: PGliteWithExtensions,
-  tablesToSync: SyncedTable[],
-  changeSet: Set<string>,
-) {
-  const countQB = sql`SELECT * FROM `
-
-  tablesToSync.forEach((table, index) => {
     const tableName = sql.raw(getTableName(table))
 
-    countQB.append(
-      sql`(SELECT count(*) AS ${tableName} FROM ${table} WHERE ${table.isSynced} = false AND ${table.sessionId} IS NOT NULL)`,
+    if (!isChangeMessage(message)) {
+      return
+    }
+
+    const rowValue = {
+      ...message.value,
+      is_synced: true,
+      is_sent_to_server: false,
+      is_new: false,
+    }
+
+    const columns = Object.keys(rowValue) as (keyof typeof rowValue)[]
+
+    if (message.headers.operation === 'insert') {
+      const columnRefs = sql.raw(columns.map((it) => `"${it}"`).join(','))
+
+      const columnValues = columns.reduce((acc, column, index) => {
+        const value = rowValue[column]
+        acc.append(sql`${value}`)
+
+        if (index < columns.length - 1) {
+          acc.append(sql`, `)
+        }
+
+        return acc
+      }, sql.empty())
+
+      const query = this.dialect.sqlToQuery(
+        sql`INSERT INTO ${tableName} (${columnRefs}) VALUES (${columnValues}) ON CONFLICT (id) DO NOTHING;`.getSQL(),
+      )
+
+      console.log(query)
+
+      await this.pg.query(query.sql, query.params)
+    }
+
+    if (message.headers.operation === 'update') {
+      const values = columns.reduce((acc, column, index) => {
+        const columnName = sql.raw(`"${column}"`)
+        const value = rowValue[column]
+        acc.append(sql`${columnName} = ${value}`)
+
+        if (index < columns.length - 1) {
+          acc.append(sql`, `)
+        }
+
+        return acc
+      }, sql.empty())
+
+      const query = this.dialect.sqlToQuery(
+        sql`UPDATE ${tableName} SET ${values} WHERE ${table.id} = ${rowValue.id};`.getSQL(),
+      )
+
+      console.log(query)
+
+      await this.pg.query(query.sql, query.params)
+    }
+  }
+
+  async setupSyncToServer() {
+    const queryParts = this.tablesToSync.map((table, index) => {
+      const tableName = sql.raw(getTableName(table))
+
+      const query = sql`(SELECT count(*) AS ${tableName} FROM ${table} WHERE ${table.isSynced} = false AND ${table.sessionId} IS NOT NULL)`
+
+      if (index < this.tablesToSync.length - 1) {
+        query.append(sql`, `)
+      }
+
+      return query
+    })
+
+    const countQuery = this.dialect.sqlToQuery(
+      sql.fromList([sql`SELECT * FROM `, ...queryParts]).getSQL(),
     )
 
-    if (index < tablesToSync.length - 1) {
-      countQB.append(sql`, `)
-    }
-  })
+    const mutex = new Mutex()
 
-  const countQuery = dialect.sqlToQuery(countQB.getSQL())
+    await this.pg.live.query<{ [P: string]: number }>({
+      query: countQuery.sql,
+      params: countQuery.params,
+      callback: async (res) => {
+        // TODO: send to server
+        //  encrypt text fields
+        //  omit original text fields
 
-  const mutex = new Mutex()
+        const [count] = res.rows
 
-  await pg.live.query<{ [P: string]: number }>({
-    query: countQuery.sql,
-    params: countQuery.params,
-    callback: async (res) => {
-      // TODO: send to server
-      //  encrypt text fields
-      //  omit original text fields
-
-      const [count] = res.rows
-
-      if (Object.values(count).some((it) => it > 0)) {
-        console.log('sync required', count)
-        await mutex.acquire()
-        try {
-          await syncToServer(pg, tablesToSync, changeSet)
-        } finally {
-          mutex.release()
+        if (Object.values(count).some((it) => it > 0)) {
+          console.log('sync required', count)
+          await mutex.acquire()
+          try {
+            await this.syncToServer()
+          } finally {
+            mutex.release()
+          }
         }
-      }
-    },
-  })
-}
-
-async function syncToServer(
-  pg: PGliteWithExtensions,
-  tablesToSync: SyncedTable[],
-  changeSet: Set<string>,
-) {
-  for (const table of tablesToSync) {
-    const tableName = getTableName(table)
-
-    const query = qb
-      .select()
-      .from(table)
-      .where(
-        sql`${table.isSynced} = false AND ${table.isSentToServer} = false AND ${table.sessionId} IS NOT NULL`,
-      )
-      .toSQL()
-
-    const res = await pg.query<InferSelectModel<SyncedTable>>(query.sql, query.params)
-
-    if (res.rows.length === 0) {
-      continue
-    }
-
-    console.log('sending to server', { tableName, res })
-
-    await pg.transaction(async (tx) => {
-      await tx.exec('SET LOCAL electric.bypass_triggers = true')
-
-      for (const row of res.rows) {
-        changeSet.add(`${tableName}:${row.id}`)
-
-        const updateEntitySql = sql`UPDATE ${table}SET "${sql.raw(table.isSentToServer.name)}" = true WHERE ${table.id} = ${row.id}`
-        const updateEntityQuery = dialect.sqlToQuery(updateEntitySql)
-
-        await fetch('http://localhost:3001/v1/sync', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            table: tableName,
-            row,
-          }),
-        })
-
-        await tx.query(updateEntityQuery.sql, updateEntityQuery.params)
-      }
+      },
     })
   }
+
+  async syncToServer() {
+    for (const table of this.tablesToSync) {
+      const tableName = getTableName(table)
+
+      const query = this.qb
+        .select()
+        .from(table)
+        .where(
+          sql`${table.isSynced} = false AND ${table.isSentToServer} = false AND ${table.sessionId} IS NOT NULL`,
+        )
+        .toSQL()
+
+      const { rows } = await this.pg.query<InferSelectModel<SyncedTable>>(query.sql, query.params)
+
+      if (rows.length === 0) {
+        continue
+      }
+
+      console.log('sending to server', { tableName, rows })
+
+      await this.db.transaction(async (tx) => {
+        for (const row of rows) {
+          await fetch('http://localhost:3001/v1/sync', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              table: tableName,
+              row,
+            }),
+          })
+
+          await tx
+            .update(table)
+            .set({
+              isSentToServer: true,
+            })
+            .where(eq(table.id, row.id))
+        }
+      })
+    }
+  }
+}
+
+export async function setupSync(pg: PGliteWithExtensions, db: Drizzle) {
+  await new SyncClient(pg, db).setup()
 }
 
 function isSyncedTable(table: PgTable): table is SyncedTable {
