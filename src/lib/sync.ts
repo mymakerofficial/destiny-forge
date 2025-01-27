@@ -2,7 +2,7 @@ import type { PGliteWithExtensions } from '@/lib/pglite.ts'
 import type { SyncedTable } from '@/db/schema.ts'
 import * as schema from '@/db/schema.ts'
 import { getTableName, type InferSelectModel } from 'drizzle-orm/table'
-import { eq, sql } from 'drizzle-orm'
+import { eq, type SQL, sql } from 'drizzle-orm'
 import { PgDialect, PgTable, QueryBuilder } from 'drizzle-orm/pg-core'
 import { getSessionId } from '@/lib/crypt.ts'
 import { Mutex } from '@electric-sql/pglite'
@@ -71,28 +71,20 @@ export class SyncClient {
 
     const columnRefs = sql.raw(columns.map((it) => `"${it}"`).join(','))
 
-    const columnValues = columns.reduce((acc, column, index) => {
-      const value = rowValue[column]
-      acc.append(sql`${value}`)
+    const columnValues = joinSql(
+      columns.map((column) => {
+        const value = rowValue[column]
+        return sql`${value}`
+      }),
+    )
 
-      if (index < columns.length - 1) {
-        acc.append(sql`, `)
-      }
-
-      return acc
-    }, sql.empty())
-
-    const updateValues = columns.reduce((acc, column, index) => {
-      const columnName = sql.raw(`"${column}"`)
-      const value = rowValue[column]
-      acc.append(sql`${columnName} = ${value}`)
-
-      if (index < columns.length - 1) {
-        acc.append(sql`, `)
-      }
-
-      return acc
-    }, sql.empty())
+    const updateValues = joinSql(
+      columns.map((column, index) => {
+        const columnName = sql.raw(`"${column}"`)
+        const value = rowValue[column]
+        return sql`${columnName} = ${value}`
+      }),
+    )
 
     if (message.headers.operation === 'insert') {
       const query = this.dialect.sqlToQuery(
@@ -105,8 +97,6 @@ export class SyncClient {
         `.getSQL(),
       )
 
-      console.log(query)
-
       await this.pg.query(query.sql, query.params)
     }
 
@@ -115,7 +105,15 @@ export class SyncClient {
         sql`UPDATE ${tableName} SET ${updateValues} WHERE ${table.id} = ${rowValue.id};`.getSQL(),
       )
 
-      console.log(query)
+      await this.pg.query(query.sql, query.params)
+    }
+
+    if (message.headers.operation === 'delete') {
+      const query = this.dialect.sqlToQuery(
+        sql`DELETE
+            FROM ${tableName}
+            WHERE ${table.id} = ${rowValue.id};`.getSQL(),
+      )
 
       await this.pg.query(query.sql, query.params)
     }
@@ -210,6 +208,18 @@ export class SyncClient {
 
 export async function setupSync(pg: PGliteWithExtensions, db: Drizzle) {
   await new SyncClient(pg, db).setup()
+}
+
+function joinSql(parts: SQL[], seperator: SQL = sql`, `): SQL {
+  return parts.reduce((acc, part, index) => {
+    acc.append(part)
+
+    if (index < parts.length - 1) {
+      acc.append(seperator)
+    }
+
+    return acc
+  }, sql.empty())
 }
 
 function isSyncedTable(table: PgTable): table is SyncedTable {
