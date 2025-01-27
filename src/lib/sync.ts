@@ -30,6 +30,7 @@ export class SyncClient {
     await this.setupSyncToServer()
   }
 
+  // subscribe to changes from the server
   async setupSyncToClient() {
     for (const table of this.tablesToSync) {
       const tableName = getTableName(table)
@@ -120,21 +121,14 @@ export class SyncClient {
   }
 
   async setupSyncToServer() {
-    const queryParts = this.tablesToSync.map((table, index) => {
-      const tableName = sql.raw(getTableName(table))
-
-      const query = sql`(SELECT count(*) AS ${tableName} FROM ${table} WHERE ${table.isSynced} = false AND ${table.isSentToServer} = false AND ${table.sessionId} IS NOT NULL)`
-
-      if (index < this.tablesToSync.length - 1) {
-        query.append(sql`, `)
-      }
-
-      return query
-    })
-
-    const countQuery = this.dialect.sqlToQuery(
-      sql.fromList([sql`SELECT * FROM `, ...queryParts]).getSQL(),
+    const queryParts = joinSql(
+      this.tablesToSync.map((table) => {
+        const tableName = sql.raw(getTableName(table))
+        return sql`(SELECT count(*) AS ${tableName} FROM ${table} WHERE ${table.isSynced} = false AND ${table.isSentToServer} = false AND ${table.sessionId} IS NOT NULL)`
+      }),
     )
+
+    const countQuery = this.dialect.sqlToQuery(sql`SELECT * FROM `.append(queryParts).getSQL())
 
     const mutex = new Mutex()
 
@@ -142,10 +136,6 @@ export class SyncClient {
       query: countQuery.sql,
       params: countQuery.params,
       callback: async (res) => {
-        // TODO: send to server
-        //  encrypt text fields
-        //  omit original text fields
-
         const [count] = res.rows
 
         if (Object.values(count).some((it) => it > 0)) {
@@ -178,8 +168,6 @@ export class SyncClient {
       if (rows.length === 0) {
         continue
       }
-
-      console.log('sending to server', { tableName, rows })
 
       await this.db.transaction(async (tx) => {
         for (const row of rows) {
