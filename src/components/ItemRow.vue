@@ -58,13 +58,15 @@ function handleUpdate() {
         <Trash />
       </Button>
     </div>
-    <p class="text-xs text-muted-foreground">
-      {{
-        new Intl.DateTimeFormat(undefined, {
-          dateStyle: 'short',
-          timeStyle: 'long',
-        }).format(item.createdAt)
-      }}
-    </p>
+    <div class="flex gap-2 items-center">
+      <p class="text-xs text-muted-foreground">
+        {{
+          new Intl.DateTimeFormat(undefined, {
+            dateStyle: 'short',
+            timeStyle: 'long',
+          }).format(item.createdAt)
+        }}
+      </p>
+    </div>
   </div>
 </template>

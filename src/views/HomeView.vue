@@ -5,6 +5,12 @@ import MainContainer from '@/components/MainContainer.vue'
 import SearchTest from '@/components/SearchTest.vue'
 import ScopedAlert from '@/components/error/ScopedAlert.vue'
 import { getSessionId } from '../lib/crypt.ts'
+import { useStorage } from '@vueuse/core'
+import { Input } from '@/components/ui/input'
+import { Label } from 'radix-vue'
+
+const sessionId = useStorage('session_id', '')
+const encryptionKey = useStorage('encryption_key', '')
 </script>
 
 <template>
@@ -24,7 +30,12 @@ import { getSessionId } from '../lib/crypt.ts'
       <!--        <SearchTest />-->
       <!--      </ErrorBoundary>-->
       <hr class="my-12" />
-      <p class="text-muted-foreground font-xs">{{ getSessionId() }}</p>
+      <p class="text-muted-foreground font-xs">
+        <Label>sessionId</Label><Input v-model="sessionId" />
+      </p>
+      <p class="text-muted-foreground font-xs">
+        <Label>encryptionKey</Label><Input v-model="encryptionKey" />
+      </p>
     </MainContainer>
   </ErrorBoundary>
 </template>

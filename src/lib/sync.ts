@@ -4,7 +4,7 @@ import * as schema from '@/db/schema.ts'
 import { getTableName, type InferSelectModel } from 'drizzle-orm/table'
 import { eq, type SQL, sql } from 'drizzle-orm'
 import { PgDialect, PgTable, QueryBuilder } from 'drizzle-orm/pg-core'
-import { getSessionId } from '@/lib/crypt.ts'
+import { CryptoManager, getSessionId } from '@/lib/crypt.ts'
 import { Mutex } from '@electric-sql/pglite'
 import type { Message } from '@electric-sql/client'
 import { isChangeMessage, ShapeStream } from '@electric-sql/client'
@@ -18,6 +18,8 @@ export class SyncClient {
   private readonly dialect = new PgDialect()
   private readonly qb = new QueryBuilder()
 
+  private readonly crypto = new CryptoManager()
+
   private readonly tablesToSync: SyncedTable[] = Object.values(schema).filter(isSyncedTable)
 
   constructor(
@@ -26,6 +28,18 @@ export class SyncClient {
   ) {}
 
   async setup() {
+    const existing = localStorage.getItem('encryption_key')
+
+    if (existing) {
+      await this.crypto.importKey(existing)
+    } else {
+      await this.crypto.generateKey()
+      const key = await this.crypto.exportKey()
+      if (key) {
+        localStorage.setItem('encryption_key', key)
+      }
+    }
+
     await this.setupSyncToClient()
     await this.setupSyncToServer()
   }
@@ -58,6 +72,13 @@ export class SyncClient {
 
     if (!isChangeMessage(message)) {
       return
+    }
+
+    // todo make this actually work
+    if (message.value.name) {
+      const decrypted = await this.crypto.decrypt(message.value.name)
+      console.log(decrypted)
+      message.value.name = decrypted
     }
 
     const rowValue = {
@@ -170,7 +191,14 @@ export class SyncClient {
       }
 
       await this.db.transaction(async (tx) => {
-        for (const row of rows) {
+        for (const originalRow of rows) {
+          const row = {
+            ...originalRow,
+            name: await this.crypto.encrypt(originalRow.name),
+          }
+
+          console.log('sending row to server', tableName, row)
+
           await fetch('http://localhost:3001/v1/sync', {
             method: 'POST',
             headers: {
@@ -187,7 +215,7 @@ export class SyncClient {
             .set({
               isSentToServer: true,
             })
-            .where(eq(table.id, row.id))
+            .where(eq(table.id, originalRow.id))
         }
       })
     }

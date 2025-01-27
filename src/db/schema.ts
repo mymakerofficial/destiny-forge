@@ -54,16 +54,17 @@ const timestampColumns = {
 
 const syncColumns = {
   id: uuid().primaryKey().defaultRandom(),
-  // set to true by server
+  // set to true by client when row is received from server
   isSynced: boolean('is_synced')
     .notNull()
     .default(false)
     .$onUpdateFn(() => false),
-  // set to true by client
+  // set to true by client after sending to server
   isSentToServer: boolean('is_sent_to_server')
     .notNull()
     .default(false)
     .$onUpdateFn(() => false),
+  // set to false by client when row is received from server
   isNew: boolean('is_new')
     .notNull()
     .default(true)
