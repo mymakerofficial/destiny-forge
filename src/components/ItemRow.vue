@@ -46,15 +46,25 @@ function handleUpdate() {
 </script>
 
 <template>
-  <div class="flex gap-2 items-center">
-    <Input v-model="name" @blur="handleUpdate" />
-    <div class="ml-2">
-      <CloudUpload v-if="item.isSentToServer" class="size-5 text-orange-500" />
-      <Cloud v-else-if="item.isSynced" class="size-5 text-green-500" />
-      <CloudOff v-else class="size-5 text-red-500" />
+  <div class="flex flex-col gap-2">
+    <div class="flex gap-2 items-center">
+      <Input v-model="name" @blur="handleUpdate" />
+      <div class="ml-2">
+        <CloudUpload v-if="item.isSentToServer" class="size-5 text-orange-500" />
+        <Cloud v-else-if="item.isSynced" class="size-5 text-green-500" />
+        <CloudOff v-else class="size-5 text-red-500" />
+      </div>
+      <Button @click="deleteItem" variant="ghost" size="icon" aria-label="Delete item">
+        <Trash />
+      </Button>
     </div>
-    <Button @click="deleteItem" variant="ghost" size="icon" aria-label="Delete item">
-      <Trash />
-    </Button>
+    <p class="text-xs text-muted-foreground">
+      {{
+        new Intl.DateTimeFormat(undefined, {
+          dateStyle: 'short',
+          timeStyle: 'long',
+        }).format(item.createdAt)
+      }}
+    </p>
   </div>
 </template>

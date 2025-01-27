@@ -64,26 +64,45 @@ export class SyncClient {
       is_synced: true,
       is_sent_to_server: false,
       is_new: false,
+      is_decrypted: false,
     }
 
     const columns = Object.keys(rowValue) as (keyof typeof rowValue)[]
 
+    const columnRefs = sql.raw(columns.map((it) => `"${it}"`).join(','))
+
+    const columnValues = columns.reduce((acc, column, index) => {
+      const value = rowValue[column]
+      acc.append(sql`${value}`)
+
+      if (index < columns.length - 1) {
+        acc.append(sql`, `)
+      }
+
+      return acc
+    }, sql.empty())
+
+    const updateValues = columns.reduce((acc, column, index) => {
+      const columnName = sql.raw(`"${column}"`)
+      const value = rowValue[column]
+      acc.append(sql`${columnName} = ${value}`)
+
+      if (index < columns.length - 1) {
+        acc.append(sql`, `)
+      }
+
+      return acc
+    }, sql.empty())
+
     if (message.headers.operation === 'insert') {
-      const columnRefs = sql.raw(columns.map((it) => `"${it}"`).join(','))
-
-      const columnValues = columns.reduce((acc, column, index) => {
-        const value = rowValue[column]
-        acc.append(sql`${value}`)
-
-        if (index < columns.length - 1) {
-          acc.append(sql`, `)
-        }
-
-        return acc
-      }, sql.empty())
-
       const query = this.dialect.sqlToQuery(
-        sql`INSERT INTO ${tableName} (${columnRefs}) VALUES (${columnValues}) ON CONFLICT (id) DO NOTHING;`.getSQL(),
+        sql`
+        INSERT INTO ${tableName}
+          (${columnRefs})
+        VALUES (${columnValues})
+          ON CONFLICT ("id") DO UPDATE
+            SET ${updateValues};
+        `.getSQL(),
       )
 
       console.log(query)
@@ -92,20 +111,8 @@ export class SyncClient {
     }
 
     if (message.headers.operation === 'update') {
-      const values = columns.reduce((acc, column, index) => {
-        const columnName = sql.raw(`"${column}"`)
-        const value = rowValue[column]
-        acc.append(sql`${columnName} = ${value}`)
-
-        if (index < columns.length - 1) {
-          acc.append(sql`, `)
-        }
-
-        return acc
-      }, sql.empty())
-
       const query = this.dialect.sqlToQuery(
-        sql`UPDATE ${tableName} SET ${values} WHERE ${table.id} = ${rowValue.id};`.getSQL(),
+        sql`UPDATE ${tableName} SET ${updateValues} WHERE ${table.id} = ${rowValue.id};`.getSQL(),
       )
 
       console.log(query)
@@ -118,7 +125,7 @@ export class SyncClient {
     const queryParts = this.tablesToSync.map((table, index) => {
       const tableName = sql.raw(getTableName(table))
 
-      const query = sql`(SELECT count(*) AS ${tableName} FROM ${table} WHERE ${table.isSynced} = false AND ${table.sessionId} IS NOT NULL)`
+      const query = sql`(SELECT count(*) AS ${tableName} FROM ${table} WHERE ${table.isSynced} = false AND ${table.isSentToServer} = false AND ${table.sessionId} IS NOT NULL)`
 
       if (index < this.tablesToSync.length - 1) {
         query.append(sql`, `)
