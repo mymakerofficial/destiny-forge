@@ -184,6 +184,15 @@ export class SyncClient {
       }
 
       await this.db.transaction(async (tx) => {
+        for (const row of rows) {
+          await tx
+            .update(table)
+            .set({
+              isSynced: false,
+            })
+            .where(eq(table.id, row.id))
+        }
+
         for (const originalRow of rows) {
           const row = await this.encryptTextValues(table, originalRow)
 

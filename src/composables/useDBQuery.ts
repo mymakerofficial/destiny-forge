@@ -110,6 +110,7 @@ export function useDBQuery<
     enabled: () => queryRef.value !== undefined,
     initialData: () => (isPgCount(queryRef.value!) ? 0 : []),
     refetchOnWindowFocus: false,
+    networkMode: 'always',
   }) as UseDBQueryReturnType<TResult>
 }
 
