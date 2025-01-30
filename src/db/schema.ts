@@ -18,32 +18,6 @@ import type {
 import type { PgColumnBuilderBase } from 'drizzle-orm/pg-core/columns/common'
 import type { PgTableWithColumns } from 'drizzle-orm/pg-core/table'
 
-type EncryptedColumnHelperReturnType<TColumnsMap extends Record<string, PgColumnBuilderBase>> = {
-  [K in keyof TColumnsMap]: TColumnsMap[K]
-} & {
-  [K in `encrypted${Capitalize<string & keyof TColumnsMap>}`]: HasDefault<
-    NotNull<PgTextBuilder<ColumnBuilderBaseConfig<'string', 'PgText'>>>
-  >
-}
-
-function encrypted<TColumnsMap extends Record<string, PgColumnBuilderBase>>(
-  columnsMap: TColumnsMap,
-): EncryptedColumnHelperReturnType<TColumnsMap> {
-  return {
-    ...columnsMap,
-    ...Object.entries(columnsMap).reduce(
-      (acc, [key, original]) => {
-        // @ts-expect-error
-        const pgName = `encrypted_${original.config?.name || key}`
-        const tsName = `encrypted${key.charAt(0).toUpperCase() + key.slice(1)}`
-        acc[tsName] = text(pgName).notNull().default('')
-        return acc
-      },
-      {} as { [key: string]: unknown },
-    ),
-  } as EncryptedColumnHelperReturnType<TColumnsMap>
-}
-
 const timestampColumns = {
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at')
@@ -69,7 +43,6 @@ const syncColumns = {
     .notNull()
     .default(true)
     .$onUpdateFn(() => false),
-  isDecrypted: boolean('is_decrypted').notNull().default(false),
   sessionId: text('session_id'),
 }
 
@@ -80,12 +53,17 @@ export type SyncedTable = PgTableWithColumns<{
   dialect: 'pg'
 }>
 
+export type RawSyncedTable = {
+  id: string
+  is_synced: boolean
+  is_sent_to_server: boolean
+  session_id: string
+}
+
 export const items = pgTable(
   'items',
   {
-    ...encrypted({
-      name: text().notNull(),
-    }),
+    name: text().notNull(),
     ...timestampColumns,
     ...syncColumns,
   },
@@ -93,14 +71,5 @@ export const items = pgTable(
     nameNotEmpty: check('name_not_empty', sql`${table.name} <> ''`),
   }),
 )
-
-export const testTable = pgTable('test_table', {
-  publicText: text('public_text'),
-  ...encrypted({
-    secretText: text('secret_text'),
-  }),
-  ...timestampColumns,
-  ...syncColumns,
-})
 
 export type ItemDto = typeof items.$inferSelect

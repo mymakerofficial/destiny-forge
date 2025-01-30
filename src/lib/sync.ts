@@ -1,8 +1,8 @@
 import type { PGliteWithExtensions } from '@/lib/pglite.ts'
-import type { SyncedTable } from '@/db/schema.ts'
+import type { RawSyncedTable, SyncedTable } from '@/db/schema.ts'
 import * as schema from '@/db/schema.ts'
 import { getTableName, type InferSelectModel } from 'drizzle-orm/table'
-import { eq, type SQL, sql } from 'drizzle-orm'
+import { eq, getTableColumns, type SQL, sql } from 'drizzle-orm'
 import { PgDialect, PgTable, QueryBuilder } from 'drizzle-orm/pg-core'
 import { CryptoManager, getSessionId } from '@/lib/crypt.ts'
 import { Mutex } from '@electric-sql/pglite'
@@ -10,11 +10,10 @@ import type { Message } from '@electric-sql/client'
 import { isChangeMessage, ShapeStream } from '@electric-sql/client'
 import type { Drizzle } from '@/lib/drizzle.ts'
 
-type RawSyncedTable = {
-  id: string
-}
-
 export class SyncClient {
+  private readonly shapeUrl = 'http://localhost:3000/v1/shape'
+  private readonly syncUrl = 'http://localhost:3001/v1/sync'
+
   private readonly dialect = new PgDialect()
   private readonly qb = new QueryBuilder()
 
@@ -50,7 +49,7 @@ export class SyncClient {
       const tableName = getTableName(table)
 
       const stream = new ShapeStream<RawSyncedTable>({
-        url: 'http://localhost:3000/v1/shape',
+        url: this.shapeUrl,
         params: {
           table: tableName,
           where: `"session_id"='${getSessionId()}'`,
@@ -74,34 +73,26 @@ export class SyncClient {
       return
     }
 
-    // todo make this actually work
-    if (message.value.name) {
-      const decrypted = await this.crypto.decrypt(message.value.name)
-      console.log(decrypted)
-      message.value.name = decrypted
-    }
-
-    const rowValue = {
+    const rowValue = await this.decryptTextValues(table, {
       ...message.value,
       is_synced: true,
       is_sent_to_server: false,
       is_new: false,
-      is_decrypted: false,
-    }
+    })
 
-    const columns = Object.keys(rowValue) as (keyof typeof rowValue)[]
+    const columnNames = Object.keys(rowValue) as (keyof RawSyncedTable)[]
 
-    const columnRefs = sql.raw(columns.map((it) => `"${it}"`).join(','))
+    const columnRefs = sql.raw(columnNames.map((it) => `"${it}"`).join(','))
 
     const columnValues = joinSql(
-      columns.map((column) => {
+      columnNames.map((column) => {
         const value = rowValue[column]
         return sql`${value}`
       }),
     )
 
     const updateValues = joinSql(
-      columns.map((column, index) => {
+      columnNames.map((column) => {
         const columnName = sql.raw(`"${column}"`)
         const value = rowValue[column]
         return sql`${columnName} = ${value}`
@@ -142,6 +133,8 @@ export class SyncClient {
   }
 
   async setupSyncToServer() {
+    // TODO: use a more efficient way to check if sync is required
+
     const queryParts = joinSql(
       this.tablesToSync.map((table) => {
         const tableName = sql.raw(getTableName(table))
@@ -192,14 +185,11 @@ export class SyncClient {
 
       await this.db.transaction(async (tx) => {
         for (const originalRow of rows) {
-          const row = {
-            ...originalRow,
-            name: await this.crypto.encrypt(originalRow.name),
-          }
+          const row = await this.encryptTextValues(table, originalRow)
 
           console.log('sending row to server', tableName, row)
 
-          await fetch('http://localhost:3001/v1/sync', {
+          await fetch(this.syncUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -218,6 +208,54 @@ export class SyncClient {
             .where(eq(table.id, originalRow.id))
         }
       })
+    }
+  }
+
+  private async decryptTextValues<T extends Partial<RawSyncedTable>>(
+    table: SyncedTable,
+    values: T,
+  ): Promise<T> {
+    const textColumns = getTextColumns(table)
+
+    const decryptedValues = Object.fromEntries(
+      await Promise.all(
+        Object.entries(values)
+          .filter(([key]) => {
+            return textColumns.some((it) => it.name === key)
+          })
+          .map(([key, value]) => {
+            return this.crypto.decrypt(value as string).then((decrypted) => [key, decrypted])
+          }),
+      ),
+    )
+
+    return {
+      ...values,
+      ...decryptedValues,
+    }
+  }
+
+  private async encryptTextValues<T extends Partial<RawSyncedTable>>(
+    table: SyncedTable,
+    values: T,
+  ): Promise<T> {
+    const textColumns = getTextColumns(table)
+
+    const encryptedValues = Object.fromEntries(
+      await Promise.all(
+        Object.entries(values)
+          .filter(([key]) => {
+            return textColumns.some((it) => it.name === key)
+          })
+          .map(([key, value]) => {
+            return this.crypto.encrypt(value as string).then((encrypted) => [key, encrypted])
+          }),
+      ),
+    )
+
+    return {
+      ...values,
+      ...encryptedValues,
     }
   }
 }
@@ -240,4 +278,11 @@ function joinSql(parts: SQL[], seperator: SQL = sql`, `): SQL {
 
 function isSyncedTable(table: PgTable): table is SyncedTable {
   return 'isSynced' in table
+}
+
+function getTextColumns(table: SyncedTable) {
+  return Object.values(getTableColumns(table)).filter(
+    (column) =>
+      column.columnType === 'PgText' && column.name !== 'id' && column.name !== 'session_id',
+  )
 }
