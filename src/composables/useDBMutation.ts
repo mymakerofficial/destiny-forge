@@ -44,6 +44,7 @@ export function useDBMutation<TError = DefaultError, TVariables = unknown, TCont
 
       await db.execute(res)
     },
+    networkMode: 'always',
   })
 }
 

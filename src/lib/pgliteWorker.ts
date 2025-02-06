@@ -8,6 +8,7 @@ worker({
   async init() {
     return await PGlite.create({
       fs: new OpfsAhpFS('destiny'),
+      relaxedDurability: true,
       extensions: {
         pg_trgm,
         fuzzystrmatch,

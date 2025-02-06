@@ -7,17 +7,22 @@ import * as schema from '@/db/schema'
 import { provideDrizzle } from '@/lib/drizzle.ts'
 import ErrorBoundary from '@/components/error/ErrorBoundary.vue'
 import ScopedAlert from '@/components/error/ScopedAlert.vue'
-import { migrate } from '@/lib/migrator.ts'
+import { migrate, MigratorStatus } from '@/lib/migrator.ts'
 import { toast, Toaster } from 'vue-sonner'
 import { PGliteWorker } from '@electric-sql/pglite/worker'
-import { onMounted, ref } from 'vue'
+import { onMounted, reactive } from 'vue'
 import { LoaderCircle } from 'lucide-vue-next'
 import type { PGlite } from '@electric-sql/pglite'
+import type { PGliteWithExtensions } from '@/lib/pglite.ts'
 
-const message = ref('Initiating database...')
-const completed = ref(false)
+const loadingState = reactive({
+  isComplete: false,
+  isError: false,
+  title: 'Loading',
+  message: 'Getting ready...',
+})
 
-const client = new PGliteWorker(
+const pg = new PGliteWorker(
   new Worker(new URL('@/lib/pgliteWorker', import.meta.url), {
     type: 'module',
   }),
@@ -26,10 +31,10 @@ const client = new PGliteWorker(
       live,
     },
   },
-) as unknown as PGlite
+) as unknown as PGliteWithExtensions
 
 const db = drizzle({
-  client,
+  client: pg as unknown as PGlite,
   schema,
   logger: {
     logQuery(query: string, params: unknown[]): void {
@@ -41,31 +46,46 @@ const db = drizzle({
   },
 })
 
-providePGlite(client as unknown as PGliteWithLive)
+providePGlite(pg as unknown as PGliteWithLive)
 provideDrizzle(db)
 
 onMounted(async () => {
-  await client.waitReady
+  loadingState.title = 'Starting database...'
+  loadingState.message = 'Waiting for database to be ready'
 
-  message.value = 'Loading extensions'
+  await pg.waitReady
 
-  await client.exec('CREATE EXTENSION IF NOT EXISTS pg_trgm;')
-  await client.exec('CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;')
+  loadingState.message = 'Loading extensions'
 
-  await migrate(client, (_, msg) => {
-    message.value = msg
+  await pg.exec('CREATE EXTENSION IF NOT EXISTS pg_trgm;')
+  await pg.exec('CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;')
+
+  loadingState.title = 'Migrating data...'
+  await migrate(pg, (status, msg) => {
+    if (status === MigratorStatus.Error) {
+      loadingState.isError = true
+    }
+    loadingState.message = msg
   })
 
-  completed.value = true
+  loadingState.isComplete = true
 })
 </script>
 
 <template>
   <Toaster :visible-toasts="10" theme="dark" />
-  <main v-if="!completed" class="h-screen flex items-center justify-center">
-    <div class="flex flex-row gap-2 items-center text-muted-foreground">
-      <LoaderCircle class="animate-spin size-6" />
-      <p class="text-lg">{{ message }}</p>
+  <main v-if="!loadingState.isComplete" class="h-screen flex items-center justify-center">
+    <div
+      :data-error="loadingState.isError"
+      class="group px-6 flex flex-wrap gap-2 items-center data-[error=true]:text-destructive"
+    >
+      <div class="flex flex-row gap-2 items-center">
+        <LoaderCircle class="animate-spin size-6" />
+        <h1 class="text-lg font-medium truncate">{{ loadingState.title }}</h1>
+      </div>
+      <p class="text-lg text-muted-foreground group-data-[error=true]:text-destructive">
+        {{ loadingState.message }}
+      </p>
     </div>
   </main>
   <ErrorBoundary v-else>
