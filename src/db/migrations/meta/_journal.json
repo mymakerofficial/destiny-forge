@@ -57,6 +57,13 @@
       "when": 1738251441523,
       "tag": "0007_harsh_agent_brand",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1738252656010,
+      "tag": "0008_aromatic_giant_man",
+      "breakpoints": true
     }
   ]
 }

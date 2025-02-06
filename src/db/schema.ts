@@ -19,8 +19,8 @@ import type { PgColumnBuilderBase } from 'drizzle-orm/pg-core/columns/common'
 import type { PgTableWithColumns } from 'drizzle-orm/pg-core/table'
 
 const timestampColumns = {
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at')
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
     .default(sql<Date>`now()`)
     .$onUpdateFn(() => new Date()),
@@ -49,7 +49,7 @@ const syncColumns = {
 export type SyncedTable = PgTableWithColumns<{
   name: string
   schema: undefined
-  columns: BuildColumns<string, typeof syncColumns, 'pg'>
+  columns: BuildColumns<string, typeof syncColumns & typeof timestampColumns, 'pg'>
   dialect: 'pg'
 }>
 
@@ -58,6 +58,8 @@ export type RawSyncedTable = {
   is_synced: boolean
   is_sent_to_server: boolean
   session_id: string
+  created_at: Date | string
+  updated_at: Date | string
 }
 
 export const items = pgTable(

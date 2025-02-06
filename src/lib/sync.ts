@@ -73,6 +73,25 @@ export class SyncClient {
       return
     }
 
+    const [localRow] = await this.db
+      .select({
+        updatedAt: table.updatedAt,
+      })
+      .from(table)
+      .where(eq(table.id, message.value.id))
+
+    const remoteUpdatedAt = new Date(message.value.updated_at)
+
+    if (localRow && localRow.updatedAt >= remoteUpdatedAt) {
+      console.log('local row is newer', localRow.updatedAt, remoteUpdatedAt)
+      // idk why this is needed
+      await this.db
+        .update(table)
+        .set({ isSynced: true, isSentToServer: false, isNew: true })
+        .where(eq(table.id, message.value.id))
+      return
+    }
+
     const rowValue = await this.decryptTextValues(table, {
       ...message.value,
       is_synced: true,
@@ -177,7 +196,13 @@ export class SyncClient {
         )
         .toSQL()
 
-      const { rows } = await this.pg.query<InferSelectModel<SyncedTable>>(query.sql, query.params)
+      const { rows } = await this.pg.query<InferSelectModel<SyncedTable>>(query.sql, query.params, {
+        parsers: {
+          // dont parse timestamps leave them as strings
+          [1114]: (value) => value,
+          [1184]: (value) => value,
+        },
+      })
 
       if (rows.length === 0) {
         continue
