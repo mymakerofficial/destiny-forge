@@ -19,7 +19,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "db:composeUp": "docker-compose up -d",
+    "db:composeUp": "docker-compose up -d --wait",
     "db:composeDown": "docker-compose down",
     "backend:runOnly": "node --experimental-strip-types --watch src/backend/main.ts",
     "backend:run": "run-s db:composeUp db:migrate backend:runOnly"

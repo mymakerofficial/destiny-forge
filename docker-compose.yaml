@@ -18,6 +18,11 @@ services:
       - listen_addresses=*
       - -c
       - wal_level=logical
+    healthcheck:
+      test: ["CMD", "pg_isready", "-q", "-d", "electric", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   electric:
     image: electricsql/electric
